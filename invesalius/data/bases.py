@@ -65,7 +65,7 @@ def base_creation(fiducials):
     return m, q, m_inv
 
 
-def calculate_fre(fiducials, minv, n, q1, q2):
+def calculate_fre(fiducials, R,t):
     """
     Calculate the Fiducial Registration Error for neuronavigation.
 
@@ -76,23 +76,17 @@ def calculate_fre(fiducials, minv, n, q1, q2):
     :param q2: origin of second base
     :return: float number of fiducial registration error
     """
+    print fiducials
+    img = np.array([fiducials[0, :],fiducials[1, :],fiducials[2, :],fiducials[3, :]])
+    trk = np.array([fiducials[4, :],fiducials[5, :],fiducials[6, :],fiducials[7, :]])
 
-    img = np.zeros([3, 3])
-    dist = np.zeros([3, 1])
+    result =[]
+    #R*points_in_left + t = points_in_right
+    for i in range(0, len(trk)):
+        result.append((np.dot(R, trk[i]) + t))
+    result=np.array(result)
 
-    p1 = np.mat(fiducials[3, :]).reshape(3, 1)
-    p2 = np.mat(fiducials[4, :]).reshape(3, 1)
-    p3 = np.mat(fiducials[5, :]).reshape(3, 1)
-
-    img[0, :] = np.asarray((q1 + (minv * n) * (p1 - q2)).reshape(1, 3))
-    img[1, :] = np.asarray((q1 + (minv * n) * (p2 - q2)).reshape(1, 3))
-    img[2, :] = np.asarray((q1 + (minv * n) * (p3 - q2)).reshape(1, 3))
-
-    dist[0] = np.sqrt(np.sum(np.power((img[0, :] - fiducials[0, :]), 2)))
-    dist[1] = np.sqrt(np.sum(np.power((img[1, :] - fiducials[1, :]), 2)))
-    dist[2] = np.sqrt(np.sum(np.power((img[2, :] - fiducials[2, :]), 2)))
-
-    return float(np.sqrt(np.sum(dist ** 2) / 3))
+    return float(np.sqrt(np.square(np.linalg.norm(result - img))/len(img)))
 
 
 def flip_x(point):
@@ -133,3 +127,24 @@ def flip_x(point):
     x, y, z = point_rot.tolist()[0][:3]
 
     return x, y, z
+
+
+def base_creation_matrix(trk, img):
+
+    from scipy import linalg
+    num_points = len(img)
+
+    trk_mat = np.array(img).T
+    img_mat = np.array(trk).T
+
+    trk_mean = trk_mat.mean(1)
+    img_mean = img_mat.mean(1)
+    trk_M = trk_mat - np.tile(trk_mean, (num_points, 1)).T
+    right_M = img_mat - np.tile(img_mean, (num_points, 1)).T
+
+    M = trk_M.dot(right_M.T)
+    U, S, Vt = linalg.svd(M)
+    V = Vt.T
+    R = V.dot(np.diag((1, 1, linalg.det(U.dot(V))))).dot(U.T)
+    t = img_mean - R.dot(trk_mean)
+    return R, t

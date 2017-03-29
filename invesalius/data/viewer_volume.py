@@ -120,6 +120,15 @@ class Viewer(wx.Panel):
         self._to_show_ball = 0
         self._ball_ref_visibility = False
 
+        #create axes
+        axes = vtk.vtkAxesActor()
+        self.marker = vtk.vtkOrientationMarkerWidget()
+        self.marker.SetInteractor(interactor._Iren)
+        self.marker.SetOrientationMarker(axes)
+        self.marker.SetViewport(0.75, 0, 1, 0.25)
+        self.marker.SetEnabled(1)
+
+
     def __bind_events(self):
         Publisher.subscribe(self.LoadActor,
                                  'Load surface actor into viewer')

@@ -20,7 +20,7 @@
 import threading
 from time import sleep
 
-from numpy import mat
+from numpy import dot
 import wx
 from wx.lib.pubsub import pub as Publisher
 
@@ -49,23 +49,16 @@ class Coregistration(threading.Thread):
         self._pause_ = True
        
     def run(self):
-        m_inv = self.bases[0]
-        n = self.bases[1]
-        q1 = self.bases[2]
-        q2 = self.bases[3]
+        R = self.bases[0]
+        t = self.bases[1]
         trck_init = self.trck_info[0]
         trck_id = self.trck_info[1]
         trck_mode = self.trck_info[2]
 
         while self.nav_id:
             trck_coord = dco.GetCoordinates(trck_init, trck_id, trck_mode)
-            trck_xyz = mat([[trck_coord[0]], [trck_coord[1]], [trck_coord[2]]])
-
-            img = q1 + (m_inv*n)*(trck_xyz - q2)
-
-            coord = (float(img[0]), float(img[1]), float(img[2]), trck_coord[3],
-                     trck_coord[4], trck_coord[5])
-
+            img = (dot(R, trck_coord[0:3]) + t)
+            coord = (float(img[0]), float(img[1]), float(img[2]), trck_coord[3], trck_coord[4], trck_coord[5])
             # Tried several combinations and different locations to send the messages,
             # however only this one does not block the GUI during navigation.
             wx.CallAfter(Publisher.sendMessage, 'Co-registered points', coord[0:3])

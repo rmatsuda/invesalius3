@@ -663,27 +663,33 @@ REF_MODE = [_("Static ref."), _("Dynamic ref.")]
 IR1 = wx.NewId()
 IR2 = wx.NewId()
 IR3 = wx.NewId()
+IR4 = wx.NewId()
 TR1 = wx.NewId()
 TR2 = wx.NewId()
 TR3 = wx.NewId()
+TR4 = wx.NewId()
 SET = wx.NewId()
 
 BTNS_IMG = {IR1: {0: _('LEI')},
             IR2: {1: _('REI')},
-            IR3: {2: _('NAI')}}
+            IR3: {2: _('NAI')},
+            IR4: {3: _('INI')}}
 
 TIPS_IMG = [wx.ToolTip(_("Select left ear in image")),
             wx.ToolTip(_("Select right ear in image")),
-            wx.ToolTip(_("Select nasion in image"))]
+            wx.ToolTip(_("Select nasion in image")),
+            wx.ToolTip(_("Select inio in image"))]
 
-BTNS_TRK = {TR1: {3: _('LET')},
-            TR2: {4: _('RET')},
-            TR3: {5: _('NAT')},
-            SET: {6: _('SET')}}
+BTNS_TRK = {TR1: {4: _('LET')},
+            TR2: {5: _('RET')},
+            TR3: {6: _('NAT')},
+            TR4: {7: _('INT')},
+            SET: {8: _('SET')}}
 
 TIPS_TRK = [wx.ToolTip(_("Select left ear with spatial tracker")),
             wx.ToolTip(_("Select right ear with spatial tracker")),
             wx.ToolTip(_("Select nasion with spatial tracker")),
+            wx.ToolTip(_("Select inio with spatial tracker")),
             wx.ToolTip(_("Show set coordinates in image"))]
 
 CAL_DIR = os.path.abspath(os.path.join(FILE_PATH, '..', 'navigation', 'mtc_files', 'CalibrationFiles'))
