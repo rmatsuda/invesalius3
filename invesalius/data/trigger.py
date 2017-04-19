@@ -19,6 +19,7 @@
 
 import threading
 from time import sleep
+from winsound import Beep
 
 import wx
 from wx.lib.pubsub import pub as Publisher
@@ -32,6 +33,8 @@ class Trigger(threading.Thread):
     def __init__(self, nav_id):
         threading.Thread.__init__(self)
         self.trigger_init = None
+        self.stylusplh = False
+        self.__bind_events()
         try:
             import serial
 
@@ -46,6 +49,12 @@ class Trigger(threading.Thread):
         except serial.serialutil.SerialException:
             print 'Connection with port COM1 failed.'
 
+    def __bind_events(self):
+        Publisher.subscribe(self.OnStylusPLH, 'PLH Stylus Button On')
+
+    def OnStylusPLH(self, pubsuv_evt):
+        self.stylusplh = True
+
     def stop(self):
         self._pause_ = True
 
@@ -59,7 +68,19 @@ class Trigger(threading.Thread):
             # lines = True
             if lines:
                 wx.CallAfter(Publisher.sendMessage, 'Create marker')
+                # If beep is on sleep should be off and vice versa
+                #sleep(0.5)
+                Beep(1000, 500)
+
+            if self.stylusplh:
+                wx.CallAfter(Publisher.sendMessage, 'Create marker')
+                # If beep is on sleep should be off and vice versa
+                #sleep(0.5)
+                Beep(1000, 500)
+                self.stylusplh = False
+
             sleep(0.175)
+
             if self._pause_:
                 if self.trigger_init:
                     self.trigger_init.close()
