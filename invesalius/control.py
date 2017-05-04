@@ -203,17 +203,18 @@ class Controller():
         # Import project treating compressed nifti exception
         suptype = ('hdr', 'nii', 'nii.gz', 'par')
         filepath = dialog.ShowImportOtherFilesDialog(id_type)
-        name = filepath.rpartition('\\')[-1].split('.')
+        if filepath is not None:
+            name = filepath.rpartition('\\')[-1].split('.')
 
-        if name[-1] == 'gz':
-            name[1] = 'nii.gz'
+            if name[-1] == 'gz':
+                name[1] = 'nii.gz'
 
-        filetype = name[1].lower()
+            filetype = name[1].lower()
 
-        if filetype in suptype:
-            Publisher.sendMessage("Open other files", filepath)
-        else:
-            dialog.ImportInvalidFiles()
+            if filetype in suptype:
+                Publisher.sendMessage("Open other files", filepath)
+            else:
+                dialog.ImportInvalidFiles()
 
     def ShowDialogOpenProject(self):
         # Offer to save current project if necessary
@@ -353,9 +354,9 @@ class Controller():
         proj = prj.Project()
         proj.Close()
 
+        Publisher.sendMessage('Set slice interaction style', const.STATE_DEFAULT)
         Publisher.sendMessage('Hide content panel')
         Publisher.sendMessage('Close project data')
-        Publisher.sendMessage('Set slice interaction style', const.STATE_DEFAULT)
         session = ses.Session()
         session.CloseProject()
 

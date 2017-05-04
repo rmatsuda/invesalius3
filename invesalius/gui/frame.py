@@ -451,15 +451,17 @@ class Frame(wx.Frame):
 
         elif id == const.ID_THRESHOLD_SEGMENTATION:
             Publisher.sendMessage("Show panel", const.ID_THRESHOLD_SEGMENTATION)
+            Publisher.sendMessage('Disable actual style')
             Publisher.sendMessage('Enable style', const.STATE_DEFAULT)
 
         elif id == const.ID_MANUAL_SEGMENTATION:
             Publisher.sendMessage("Show panel", const.ID_MANUAL_SEGMENTATION)
+            Publisher.sendMessage('Disable actual style')
             Publisher.sendMessage('Enable style', const.SLICE_STATE_EDITOR)
 
         elif id == const.ID_WATERSHED_SEGMENTATION:
             Publisher.sendMessage("Show panel", const.ID_WATERSHED_SEGMENTATION)
-            #  Publisher.sendMessage('Disable actual style')
+            Publisher.sendMessage('Disable actual style')
             Publisher.sendMessage('Enable style', const.SLICE_STATE_WATERSHED)
 
         elif id == const.ID_FLOODFILL_MASK:
@@ -1300,6 +1302,7 @@ class ObjectToolBar(AuiToolBar):
         sub(self._UntoggleAllItems, 'Untoggle object toolbar items')
         sub(self._ToggleLinearMeasure, "Set tool linear measure")
         sub(self._ToggleAngularMeasure, "Set tool angular measure")
+        sub(self.ToggleItem, 'Toggle toolbar item')
 
     def __bind_events_wx(self):
         """
@@ -1485,6 +1488,12 @@ class ObjectToolBar(AuiToolBar):
                 self.ToggleTool(item, False)
         evt.Skip()
 
+    def ToggleItem(self, evt):
+        _id, value = evt.data
+        if _id in self.enable_items:
+            self.ToggleTool(_id, value)
+            self.Refresh()
+
     def SetStateProjectClose(self):
         """
         Disable menu items (e.g. zoom) when project is closed.
@@ -1565,6 +1574,7 @@ class SliceToolBar(AuiToolBar):
         sub(self._EnableState, "Enable state project")
         sub(self._UntoggleAllItems, 'Untoggle slice toolbar items')
         sub(self.OnToggle, 'Toggle Cross')
+        sub(self.ToggleItem, 'Toggle toolbar item')
 
     def __bind_events_wx(self):
         """
@@ -1630,6 +1640,11 @@ class SliceToolBar(AuiToolBar):
         ##print ">>>", self.sst.IsToggled()
         #print ">>>", self.sst.GetState()
 
+    def ToggleItem(self, evt):
+        _id, value = evt.data
+        if _id in self.enable_items:
+            self.ToggleTool(_id, value)
+            self.Refresh()
 
     def SetStateProjectClose(self):
         """
