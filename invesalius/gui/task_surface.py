@@ -501,6 +501,7 @@ class SurfaceProperties(wx.Panel):
         n = self.combo_surface_name.GetCount()
         for i in xrange(n-1, -1, -1):
             self.combo_surface_name.Delete(i)
+        self.surface_list = []
 
     def ChangeSurfaceName(self, pubsub_evt):
         index, name = pubsub_evt.data
@@ -527,7 +528,7 @@ class SurfaceProperties(wx.Panel):
 
         self.combo_surface_name.SetItems([n[0] for n in self.surface_list])
         self.combo_surface_name.SetSelection(i)
-        transparency = 100*pubsub_evt.data[4]
+        transparency = 100*pubsub_evt.data[5]
         self.button_colour.SetColour(colour)
         self.slider_transparency.SetValue(transparency)
         Publisher.sendMessage('Update surface data', (index))

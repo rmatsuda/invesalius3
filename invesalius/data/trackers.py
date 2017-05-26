@@ -71,6 +71,7 @@ def ClaronTracker(tracker_id):
         trck_init.MarkerDir = const.MAR_DIR
         trck_init.NumberFramesProcessed = 10
         trck_init.FramesExtrapolated = 0
+        trck_init.PROBE_NAME = "1Probe"
         trck_init.REF_NAME = "5Ref"
         trck_init.Initialize()
 
@@ -124,6 +125,8 @@ def PlhWrapperConnection():
         if trck_check:
             # First run is necessary to discard the first coord collection
             trck_init.Run()
+        else:
+            trck_init = trck_check
     except:
         print 'Could not connect to Polhemus via wrapper.'
 
@@ -131,11 +134,10 @@ def PlhWrapperConnection():
 
 
 def PlhSerialConnection(tracker_id):
-    trck_init = None
     try:
         import serial
 
-        trck_init = serial.Serial(0, baudrate=115200, timeout=0.2)
+        trck_init = serial.Serial('COM1', baudrate=115200, timeout=0.2)
 
         if tracker_id == 2:
             # Polhemus FASTRAK needs configurations first
@@ -144,6 +146,7 @@ def PlhSerialConnection(tracker_id):
         elif tracker_id == 3:
             # Polhemus ISOTRAK needs to set tracking point from
             # center to tip.
+            trck_init.write("F")
             trck_init.write("Y")
 
         trck_init.write('P')
@@ -153,6 +156,7 @@ def PlhSerialConnection(tracker_id):
             trck_init = None
 
     except:
+        trck_init = None
         print 'Could not connect to Polhemus serial.'
 
     return trck_init
@@ -182,9 +186,7 @@ def PlhUSBConnection(tracker_id):
         if not data:
             trck_init = None
 
-    except uc.USBError as err:
-        print 'Could not set configuration %s' % err
-    else:
+    except:
         print 'Could not connect to Polhemus USB.'
 
     return trck_init
@@ -196,6 +198,9 @@ def DisconnectTracker(tracker_id):
 
     :param tracker_id: ID of tracking device.
     """
+    from wx.lib.pubsub import pub as Publisher
+    Publisher.sendMessage('Update status text in GUI', _("Disconnecting tracker ..."))
+    Publisher.sendMessage('Remove sensors ID')
     trck_init = None
     # TODO: create individual functions to disconnect each other device, e.g. Polhemus.
     if tracker_id == 1:
@@ -203,6 +208,7 @@ def DisconnectTracker(tracker_id):
             import pyclaron
             pyclaron.pyclaron().Close()
             lib_mode = 'wrapper'
+            print 'Claron tracker disconnected.'
         except ImportError:
             lib_mode = 'error'
             print 'The ClaronTracker library is not installed.'
@@ -212,6 +218,7 @@ def DisconnectTracker(tracker_id):
             import polhemus
             polhemus.polhemus().Close()
             lib_mode = 'wrapper'
+            print 'Polhemus tracker disconnected.'
         except ImportError:
             lib_mode = 'error'
             print 'The polhemus library is not installed.'
@@ -219,5 +226,7 @@ def DisconnectTracker(tracker_id):
     elif tracker_id == 5:
         print 'Debug tracker disconnected.'
         lib_mode = 'debug'
+
+    Publisher.sendMessage('Update status text in GUI', _("Ready"))
 
     return trck_init, lib_mode

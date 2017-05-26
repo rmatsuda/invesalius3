@@ -24,7 +24,7 @@ import wx
 import itertools
 
 #from invesalius.project import Project
-INVESALIUS_VERSION = "3.0"
+INVESALIUS_VERSION = "3.1"
 
 #---------------
 
@@ -328,8 +328,9 @@ if hasattr(sys,"frozen") and (sys.frozen == "windows_exe"\
     ICON_DIR = os.path.join(abs_path, "icons")
     SAMPLE_DIR = os.path.join(FILE_PATH, 'samples')
     DOC_DIR = os.path.join(FILE_PATH, 'docs')
-
     folder=RAYCASTING_PRESETS_DIRECTORY= os.path.join(abs_path, "presets", "raycasting")
+    RAYCASTING_PRESETS_COLOR_DIRECTORY = os.path.join(abs_path, "presets", "raycasting", "color_list")
+
 else:
     ICON_DIR = os.path.abspath(os.path.join(FILE_PATH, '..', 'icons'))
     SAMPLE_DIR = os.path.abspath(os.path.join(FILE_PATH,'..', 'samples'))
@@ -338,6 +339,12 @@ else:
     folder=RAYCASTING_PRESETS_DIRECTORY= os.path.abspath(os.path.join(".",
                                                                   "presets",
                                                                   "raycasting"))
+
+    RAYCASTING_PRESETS_COLOR_DIRECTORY = os.path.abspath(os.path.join(".",
+                                                                  "presets",
+                                                                  "raycasting",
+                                                                  "color_list"))
+
 
 # MAC App
 if not os.path.exists(ICON_DIR):
@@ -488,8 +495,8 @@ VTK_WARNING = 0
 [ID_DICOM_IMPORT, ID_PROJECT_OPEN, ID_PROJECT_SAVE_AS, ID_PROJECT_SAVE,
 ID_PROJECT_CLOSE, ID_PROJECT_INFO, ID_SAVE_SCREENSHOT, ID_DICOM_LOAD_NET,
 ID_PRINT_SCREENSHOT, ID_IMPORT_OTHERS_FILES, ID_PREFERENCES, ID_DICOM_NETWORK,
-ID_TIFF_JPG_PNG, ID_VIEW_INTERPOLATED, ID_ANALYZE_IMPORT, ID_NIFTI_IMPORT,
-ID_PARREC_IMPORT] = [wx.NewId() for number in range(17)]
+ID_TIFF_JPG_PNG, ID_VIEW_INTERPOLATED, ID_MODE_NAVIGATION, ID_ANALYZE_IMPORT,
+ID_NIFTI_IMPORT, ID_PARREC_IMPORT] = [wx.NewId() for number in range(18)]
 ID_EXIT = wx.ID_EXIT
 ID_ABOUT = wx.ID_ABOUT
 
@@ -521,6 +528,9 @@ ID_FLOODFILL_MASK = wx.NewId()
 ID_FILL_HOLE_AUTO = wx.NewId()
 ID_REMOVE_MASK_PART = wx.NewId()
 ID_SELECT_MASK_PART = wx.NewId()
+ID_MANUAL_SEGMENTATION = wx.NewId()
+ID_WATERSHED_SEGMENTATION = wx.NewId()
+ID_THRESHOLD_SEGMENTATION = wx.NewId()
 ID_FLOODFILL_SEGMENTATION = wx.NewId()
 ID_CROP_MASK = wx.NewId()
 
@@ -674,6 +684,10 @@ BTNS_IMG = {IR1: {0: _('LEI')},
             IR2: {1: _('REI')},
             IR3: {2: _('NAI')},
             IR4: {3: _('INI')}}
+
+BTNS_IMG_MKS = {IR1: {0: 'LEI'},
+            IR2: {1: 'REI'},
+            IR3: {2: 'NAI'}}
 
 TIPS_IMG = [wx.ToolTip(_("Select left ear in image")),
             wx.ToolTip(_("Select right ear in image")),

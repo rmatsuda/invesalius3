@@ -361,6 +361,9 @@ class SurfaceManager():
         del self.actors_dict
         self.actors_dict = {}
 
+        # restarting the surface index
+        Surface.general_index = -1
+
     def OnSelectSurface(self, pubsub_evt):
         index = pubsub_evt.data
         #self.last_surface_index = index
@@ -610,11 +613,6 @@ class SurfaceManager():
 
             #  polydata.SetSource(None)
             #  polydata.DebugOn()
-            w = vtk.vtkPLYWriter()
-            w.SetInputData(polydata)
-            w.SetFileName('/tmp/ca_smoothing_inv.ply')
-            w.Write()
-
         else:
             #smoother = vtk.vtkWindowedSincPolyDataFilter()
             smoother = vtk.vtkSmoothPolyDataFilter()

@@ -453,7 +453,7 @@ def ShowSaveMarkersDialog(default_filename=None):
                         _("Save markers as..."),  # title
                         "",  # last used directory
                         default_filename,
-                        _("Markers (*.txt)|*.txt"),
+                        _("Markers files (*.mks)|*.mks"),
                         wx.SAVE | wx.OVERWRITE_PROMPT)
     # dlg.SetFilterIndex(0) # default is VTI
 
@@ -469,7 +469,7 @@ def ShowSaveMarkersDialog(default_filename=None):
         ok = 1
 
     if (ok):
-        extension = "txt"
+        extension = "mks"
         if sys.platform != 'win32':
             if filename.split(".")[-1] != extension:
                 filename = filename + "." + extension
@@ -484,6 +484,7 @@ def ShowLoadMarkersDialog():
     dlg = wx.FileDialog(None, message=_("Load markers"),
                         defaultDir="",
                         defaultFile="",
+                        wildcard=_("Markers files (*.mks)|*.mks"),
                         style=wx.OPEN|wx.CHANGE_DIR)
 
     # inv3 filter is default
@@ -792,10 +793,22 @@ def NoMarkerSelected():
         dlg = wx.MessageDialog(None, "", msg,
                                 wx.ICON_INFORMATION | wx.OK)
     else:
-        dlg = wx.MessageDialog(None,msg, "InVesalius 3 - Neuronavigator",
+        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
                                 wx.ICON_INFORMATION | wx.OK)
     dlg.ShowModal()
     dlg.Destroy()
+
+def DeleteAllMarkers():
+    msg = _("Do you really want to delete all markers?")
+    if sys.platform == 'darwin':
+        dlg = wx.MessageDialog(None, "", msg,
+                               wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+    else:
+        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
+                               wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+    result = dlg.ShowModal()
+    dlg.Destroy()
+    return result
 
 
 def EnterMarkerID(default):
@@ -1039,7 +1052,7 @@ def ShowAboutDialog(parent):
 #       _("The software also allows generating correspondent STL files,")+\
 #       _("so the user can print 3D physical models of the patient's anatomy ")+\
 #       _("using Rapid Prototyping."), 350, wx.ClientDC(parent))
-    info.WebSite = ("http://www.cti.gov.br/invesalius")
+    info.WebSite = ("https://www.cti.gov.br/invesalius")
     info.License = _("GNU GPL (General Public License) version 2")
 
     info.Developers = ["Paulo Henrique Junqueira Amorim",
@@ -1047,6 +1060,8 @@ def ShowAboutDialog(parent):
                        "Jorge Vicente Lopes da Silva",
                        "Victor Hugo de Oliveira e Souza (navigator)",
                        "Renan Hiroshi Matsuda (navigator)",
+                       "André Salles Cunha Peres (navigator)",
+                       "Oswaldo Baffa Filho (navigator)",
                        "Tatiana Al-Chueyr (former)",
                        "Guilherme Cesar Soares Ruppert (former)",
                        "Fabio de Souza Azevedo (former)",
@@ -1054,21 +1069,33 @@ def ShowAboutDialog(parent):
                        "Olly Betts (patches to support wxPython3)"]
 
     info.Translators = ["Alex P. Natsios",
+                        "Alicia Perez",
                         "Anderson Antonio Mamede da Silva",
                         "Andreas Loupasakis",
+                        "Angelo Pucillo",
                         "Annalisa Manenti",
                         "Cheng-Chia Tseng",
+                        "Dan",
+                        "DCamer",
                         "Dimitris Glezos",
                         "Eugene Liscio",
                         u"Frédéric Lopez",
-                        "fri",
+                        "Florin Putura",
+                        "Fri",
+                        "Jangblue",
                         "Javier de Lima Moreno",
+                        "Kensey Okinawa",
+                        "Maki Sugimoto",
                         "Mario Regino Moreno Guerra",
                         "Massimo Crisantemo",
                         "Nikos Korkakakis",
                         "Raul Bolliger Neto",
                         "Sebastian Hilbert",
-                        "Semarang Pari"]
+                        "Semarang Pari",
+                        "Silvério Santos",
+                        "Vasily Shishkin",
+                        "Yohei Sotsuka",
+                        "Yoshihiro Sato"]
 
     #info.DocWriters = ["Fabio Francisco da Silva (PT)"]
 
@@ -2025,7 +2052,8 @@ class ImportBitmapParameters(wx.Dialog):
         box.AddSizer(gbs_principal, 1, wx.ALL|wx.EXPAND, 10)
         
         p.SetSizer(box)
-
+        box.Fit(self)
+        self.Layout()
 
     def bind_evts(self):
         self.btn_ok.Bind(wx.EVT_BUTTON, self.OnOk)
@@ -2680,23 +2708,14 @@ class FFillSegmentationOptionsDialog(wx.Dialog):
 class CropOptionsDialog(wx.Dialog):
     
     def __init__(self, config):
-
         self.config = config
-
         pre = wx.PreDialog()
 
-        if sys.platform == 'win32':
-            size=wx.Size(204,165)
-        else:
-            size=wx.Size(205,180)
-
         pre.Create(wx.GetApp().GetTopWindow(), -1, _(u"Crop mask"),\
-                    size=size, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
-                
+                    style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
         self.PostCreate(pre)
 
         self._init_gui()
-        #self.config = config
 
     def UpdateValues(self, pubsub_evt):
 
@@ -2717,19 +2736,17 @@ class CropOptionsDialog(wx.Dialog):
         self.tx_coronal_f.SetValue(str(yf))
 
     def _init_gui(self):
-
-        
         p = wx.Panel(self, -1, style = wx.TAB_TRAVERSAL
                      | wx.CLIP_CHILDREN
                      | wx.FULL_REPAINT_ON_RESIZE)
-       
+
         gbs_principal = self.gbs = wx.GridBagSizer(4,1)
 
         gbs = self.gbs = wx.GridBagSizer(3, 4)
-       
+
         flag_labels = wx.ALIGN_RIGHT  | wx.ALIGN_CENTER_VERTICAL
 
-        txt_style = wx.TE_READONLY 
+        txt_style = wx.TE_READONLY
 
         stx_axial = wx.StaticText(p, -1, _(u"Axial:"))
         self.tx_axial_i = tx_axial_i = wx.TextCtrl(p, -1, "", size=wx.Size(50,-1), style=txt_style)
@@ -2738,7 +2755,7 @@ class CropOptionsDialog(wx.Dialog):
 
         gbs.Add(stx_axial, (0,0), flag=flag_labels)
         gbs.Add(tx_axial_i, (0,1))
-        gbs.Add(stx_axial_t, (0,2), flag=flag_labels)        
+        gbs.Add(stx_axial_t, (0,2), flag=flag_labels)
         gbs.Add(tx_axial_f, (0,3))
 
         stx_sagital = wx.StaticText(p, -1, _(u"Sagital:"))
@@ -2748,7 +2765,7 @@ class CropOptionsDialog(wx.Dialog):
 
         gbs.Add(stx_sagital, (1,0), flag=flag_labels)
         gbs.Add(tx_sagital_i, (1,1))
-        gbs.Add(stx_sagital_t, (1,2), flag=flag_labels)        
+        gbs.Add(stx_sagital_t, (1,2), flag=flag_labels)
         gbs.Add(tx_sagital_f, (1,3))
 
         stx_coronal = wx.StaticText(p, -1, _(u"Coronal:"))
@@ -2758,11 +2775,11 @@ class CropOptionsDialog(wx.Dialog):
 
         gbs.Add(stx_coronal, (2,0), flag=flag_labels)
         gbs.Add(tx_coronal_i, (2,1))
-        gbs.Add(stx_coronal_t, (2,2), flag=flag_labels)        
+        gbs.Add(stx_coronal_t, (2,2), flag=flag_labels)
         gbs.Add(tx_coronal_f, (2,3))
 
         gbs_button = wx.GridBagSizer(2, 4)
- 
+
         btn_ok = self.btn_ok= wx.Button(p, wx.ID_OK)
         btn_ok.SetDefault()
 
@@ -2778,11 +2795,18 @@ class CropOptionsDialog(wx.Dialog):
 
         box = wx.BoxSizer()
         box.AddSizer(gbs_principal, 1, wx.ALL|wx.EXPAND, 10)
-        
+
         p.SetSizer(box)
-        
+        box.Fit(p)
+        p.Layout()
+
+        sizer = wx.BoxSizer()
+        sizer.Add(p, 1, wx.EXPAND)
+        sizer.Fit(self)
+        self.Layout()
+
         Publisher.subscribe(self.UpdateValues, 'Update crop limits into gui')
-        
+
         btn_ok.Bind(wx.EVT_BUTTON, self.OnOk)
         btn_cancel.Bind(wx.EVT_BUTTON, self.OnClose)
         self.Bind(wx.EVT_CLOSE, self.OnClose)

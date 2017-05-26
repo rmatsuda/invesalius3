@@ -94,11 +94,13 @@ class Frame(wx.Frame):
         self.SetSize(self.GetSize())
         #self.SetSize(wx.Size(1024, 748))
 
+        self._show_navigator_message = True
 
         #to control check and unckeck of menu view -> interpolated_slices
         main_menu = MenuBar(self)
 
         self.actived_interpolated_slices = main_menu.view_menu
+        self.actived_navigation_mode = main_menu.mode_menu
 
         # Set menus, status and task bar
         self.SetMenuBar(main_menu)
@@ -380,6 +382,7 @@ class Frame(wx.Frame):
         Close all project data.
         """
         Publisher.sendMessage('Close Project')
+        Publisher.sendMessage('Disconnect tracker')
         s = ses.Session()
         if not s.IsOpen() or not s.project_path:
             Publisher.sendMessage('Exit')
@@ -446,6 +449,21 @@ class Frame(wx.Frame):
         elif id == const.ID_REORIENT_IMG:
             self.OnReorientImg()
 
+        elif id == const.ID_THRESHOLD_SEGMENTATION:
+            Publisher.sendMessage("Show panel", const.ID_THRESHOLD_SEGMENTATION)
+            Publisher.sendMessage('Disable actual style')
+            Publisher.sendMessage('Enable style', const.STATE_DEFAULT)
+
+        elif id == const.ID_MANUAL_SEGMENTATION:
+            Publisher.sendMessage("Show panel", const.ID_MANUAL_SEGMENTATION)
+            Publisher.sendMessage('Disable actual style')
+            Publisher.sendMessage('Enable style', const.SLICE_STATE_EDITOR)
+
+        elif id == const.ID_WATERSHED_SEGMENTATION:
+            Publisher.sendMessage("Show panel", const.ID_WATERSHED_SEGMENTATION)
+            Publisher.sendMessage('Disable actual style')
+            Publisher.sendMessage('Enable style', const.SLICE_STATE_WATERSHED)
+
         elif id == const.ID_FLOODFILL_MASK:
             self.OnFillHolesManually()
 
@@ -467,12 +485,24 @@ class Frame(wx.Frame):
                 self.OnInterpolatedSlices(True)
             else:
                 self.OnInterpolatedSlices(False)
+
+        elif id == const.ID_MODE_NAVIGATION:
+            st = self.actived_navigation_mode.IsChecked(const.ID_MODE_NAVIGATION)
+            self.OnNavigationMode(st)
+
         elif id == const.ID_CROP_MASK:
             self.OnCropMask()
 
     def OnInterpolatedSlices(self, status):
         Publisher.sendMessage('Set interpolated slices', status)
 
+    def OnNavigationMode(self, status):
+        if status and self._show_navigator_message and sys.platform != 'win32':
+            wx.MessageBox(_('Currently the Navigation mode is only working on Windows'), 'Info', wx.OK | wx.ICON_INFORMATION)
+            self._show_navigator_message = False
+        Publisher.sendMessage('Set navigation mode', status)
+        if not status:
+            Publisher.sendMessage('Remove sensors ID')
 
     def OnSize(self, evt):
         """
@@ -513,6 +543,7 @@ class Frame(wx.Frame):
             Publisher.sendMessage('Reset Reaycasting')
             Publisher.sendMessage('Update Slice Interpolation')
             Publisher.sendMessage('Update Slice Interpolation MenuBar')
+            Publisher.sendMessage('Update Navigation Mode MenuBar')
             Publisher.sendMessage('Update Surface Interpolation')
 
     def ShowAbout(self):
@@ -531,8 +562,13 @@ class Frame(wx.Frame):
         """
         Show getting started window.
         """
+        if ses.Session().language == 'pt_BR':
+            user_guide = "user_guide_pt_BR.pdf"
+        else:
+            user_guide = "user_guide_en.pdf"
+
         path = os.path.join(const.DOC_DIR,
-                            "user_guide_pt_BR.pdf")
+                            user_guide)
         if sys.platform == 'darwin':
             path = r'file://' + path
         webbrowser.open(path)
@@ -642,6 +678,17 @@ class MenuBar(wx.MenuBar):
                              const.ID_FILL_HOLE_AUTO,
                              const.ID_REMOVE_MASK_PART,
                              const.ID_SELECT_MASK_PART,
+                             const.ID_FLOODFILL_SEGMENTATION,
+                             const.ID_FLIP_X,
+                             const.ID_FLIP_Y,
+                             const.ID_FLIP_Z,
+                             const.ID_SWAP_XY,
+                             const.ID_SWAP_XZ,
+                             const.ID_SWAP_YZ,
+                             const.ID_THRESHOLD_SEGMENTATION,
+                             const.ID_MANUAL_SEGMENTATION,
+                             const.ID_WATERSHED_SEGMENTATION,
+                             const.ID_THRESHOLD_SEGMENTATION,
                              const.ID_FLOODFILL_SEGMENTATION,]
         self.__init_items()
         self.__bind_events()
@@ -660,11 +707,13 @@ class MenuBar(wx.MenuBar):
         sub(self.OnEnableState, "Enable state project")
         sub(self.OnEnableUndo, "Enable undo")
         sub(self.OnEnableRedo, "Enable redo")
+        sub(self.OnEnableNavigation, "Navigation Status")
 
         sub(self.OnAddMask, "Add mask")
         sub(self.OnRemoveMasks, "Remove masks")
         sub(self.OnShowMask, "Show mask")
         sub(self.OnUpdateSliceInterpolation, "Update Slice Interpolation MenuBar")
+        sub(self.OnUpdateNavigationMode, "Update Navigation Mode MenuBar")
 
         self.num_masks = 0
 
@@ -701,26 +750,7 @@ class MenuBar(wx.MenuBar):
         #file_menu.AppendSeparator()
         app(const.ID_EXIT, _("Exit\tCtrl+Q"))
 
-
-        ############################### EDIT###############################
-        # Flip
-        #flip_menu = wx.Menu()
-        #app = flip_menu.Append
-        #app(const.ID_FLIP_X, _("R <-> L"))
-        #app(const.ID_FLIP_Y, _("A <-> P"))
-        #app(const.ID_FLIP_Z, _("T <-> B"))
-
-        #swap_axes_menu = wx.Menu()
-        #app = swap_axes_menu.Append
-        #app(const.ID_SWAP_XY, _("R-L <-> A-P"))
-        #app(const.ID_SWAP_XZ, _("R-L <-> T-B"))
-        #app(const.ID_SWAP_YZ, _("A-P <-> T-B"))
-
         file_edit = wx.Menu()
-        #file_edit.AppendMenu(wx.NewId(), _('Flip'), flip_menu)
-        #file_edit.AppendMenu(wx.NewId(), _('Swap axes'), swap_axes_menu)
-
-
         d = const.ICON_DIR
         if not(sys.platform == 'darwin'):
             # Bitmaps for show/hide task panel item
@@ -777,20 +807,37 @@ class MenuBar(wx.MenuBar):
         self.crop_mask_menu = mask_menu.Append(const.ID_CROP_MASK, _("Crop"))
         self.crop_mask_menu.Enable(False)
 
-        tools_menu.AppendMenu(-1,  _(u"Mask"), mask_menu)
-
         # Segmentation Menu
         segmentation_menu = wx.Menu()
+        self.threshold_segmentation = segmentation_menu.Append(const.ID_THRESHOLD_SEGMENTATION, _(u"Threshold"))
+        self.manual_segmentation = segmentation_menu.Append(const.ID_MANUAL_SEGMENTATION, _(u"Manual segmentation"))
+        self.watershed_segmentation = segmentation_menu.Append(const.ID_WATERSHED_SEGMENTATION, _(u"Watershed"))
         self.ffill_segmentation = segmentation_menu.Append(const.ID_FLOODFILL_SEGMENTATION, _(u"Region growing"))
         self.ffill_segmentation.Enable(False)
 
-        tools_menu.AppendMenu(-1, _("Segmentation"), segmentation_menu)
-
         # Image menu
         image_menu = wx.Menu()
+
+        # Flip
+        flip_menu = wx.Menu()
+        flip_menu.Append(const.ID_FLIP_X, _("Right - Left")).Enable(False)
+        flip_menu.Append(const.ID_FLIP_Y, _("Anterior - Posterior")).Enable(False)
+        flip_menu.Append(const.ID_FLIP_Z, _("Top - Bottom")).Enable(False)
+
+        swap_axes_menu = wx.Menu()
+        swap_axes_menu.Append(const.ID_SWAP_XY, _("From Right-Left to Anterior-Posterior")).Enable(False)
+        swap_axes_menu.Append(const.ID_SWAP_XZ, _("From Right-Left to Top-Bottom")).Enable(False)
+        swap_axes_menu.Append(const.ID_SWAP_YZ, _("From Anterior-Posterior to Top-Bottom")).Enable(False)
+
+        image_menu.AppendMenu(wx.NewId(), _('Flip'), flip_menu)
+        image_menu.AppendMenu(wx.NewId(), _('Swap axes'), swap_axes_menu)
+
         reorient_menu = image_menu.Append(const.ID_REORIENT_IMG, _(u'Reorient image\tCtrl+Shift+R'))
+
         reorient_menu.Enable(False)
         tools_menu.AppendMenu(-1, _(u'Image'), image_menu)
+        tools_menu.AppendMenu(-1,  _(u"Mask"), mask_menu)
+        tools_menu.AppendMenu(-1, _("Segmentation"), segmentation_menu)
 
 
         #View
@@ -835,6 +882,15 @@ class MenuBar(wx.MenuBar):
         options_menu = wx.Menu()
         options_menu.Append(const.ID_PREFERENCES, _("Preferences..."))
 
+        #Mode
+        self.mode_menu = mode_menu = wx.Menu()
+        mode_menu.Append(const.ID_MODE_NAVIGATION, _(u'Navigation mode'), "", wx.ITEM_CHECK)
+
+        v = self.NavigationModeStatus()
+        self.mode_menu.Check(const.ID_MODE_NAVIGATION, v)
+
+        self.actived_navigation_mode = self.mode_menu
+
         # HELP
         help_menu = wx.Menu()
         help_menu.Append(const.ID_START, _("Getting started..."))
@@ -854,6 +910,7 @@ class MenuBar(wx.MenuBar):
         self.Append(tools_menu, _(u"Tools"))
         #self.Append(tools_menu, "Tools")
         self.Append(options_menu, _("Options"))
+        self.Append(mode_menu, _("Mode"))
         self.Append(help_menu, _("Help"))
 
 
@@ -868,10 +925,21 @@ class MenuBar(wx.MenuBar):
 
         return v
 
+    def NavigationModeStatus(self):
+        status = int(ses.Session().mode)
+
+        if status == 1:
+            return True
+        else:
+            return False
+
     def OnUpdateSliceInterpolation(self, pubsub_evt):
         v = self.SliceInterpolationStatus()
         self.view_menu.Check(const.ID_VIEW_INTERPOLATED, v)
 
+    def OnUpdateNavigationMode(self, pubsub_evt):
+        v = self.NavigationModeStatus()
+        self.mode_menu.Check(const.ID_MODE_NAVIGATION, v)
 
     def OnEnableState(self, pubsub_evt):
         """
@@ -911,6 +979,17 @@ class MenuBar(wx.MenuBar):
             self.FindItemById(wx.ID_REDO).Enable(True)
         else:
             self.FindItemById(wx.ID_REDO).Enable(False)
+
+    def OnEnableNavigation(self, pubsub_evt):
+        """
+        Disable mode menu when navigation is on.
+        :param pubsub_evt: Navigation status
+        """
+        value = pubsub_evt.data
+        if value:
+            self.FindItemById(const.ID_MODE_NAVIGATION).Enable(False)
+        else:
+            self.FindItemById(const.ID_MODE_NAVIGATION).Enable(True)
 
     def OnAddMask(self, pubsub_evt):
         self.num_masks += 1
@@ -1228,6 +1307,7 @@ class ObjectToolBar(AuiToolBar):
         sub(self._UntoggleAllItems, 'Untoggle object toolbar items')
         sub(self._ToggleLinearMeasure, "Set tool linear measure")
         sub(self._ToggleAngularMeasure, "Set tool angular measure")
+        sub(self.ToggleItem, 'Toggle toolbar item')
 
     def __bind_events_wx(self):
         """
@@ -1413,6 +1493,12 @@ class ObjectToolBar(AuiToolBar):
                 self.ToggleTool(item, False)
         evt.Skip()
 
+    def ToggleItem(self, evt):
+        _id, value = evt.data
+        if _id in self.enable_items:
+            self.ToggleTool(_id, value)
+            self.Refresh()
+
     def SetStateProjectClose(self):
         """
         Disable menu items (e.g. zoom) when project is closed.
@@ -1492,6 +1578,8 @@ class SliceToolBar(AuiToolBar):
         sub = Publisher.subscribe
         sub(self._EnableState, "Enable state project")
         sub(self._UntoggleAllItems, 'Untoggle slice toolbar items')
+        sub(self.OnToggle, 'Toggle Cross')
+        sub(self.ToggleItem, 'Toggle toolbar item')
 
     def __bind_events_wx(self):
         """
@@ -1530,8 +1618,14 @@ class SliceToolBar(AuiToolBar):
         Update status of other items on toolbar (only one item
         should be toggle each time).
         """
-        id = evt.GetId()
-        evt.Skip()
+        if hasattr(evt, 'data'):
+            id = evt.data
+            if not self.GetToolToggled(id):
+                self.ToggleTool(id, True)
+                self.Refresh()
+        else:
+            id = evt.GetId()
+            evt.Skip()
 
         state = self.GetToolToggled(id)
 
@@ -1551,6 +1645,11 @@ class SliceToolBar(AuiToolBar):
         ##print ">>>", self.sst.IsToggled()
         #print ">>>", self.sst.GetState()
 
+    def ToggleItem(self, evt):
+        _id, value = evt.data
+        if _id in self.enable_items:
+            self.ToggleTool(_id, value)
+            self.Refresh()
 
     def SetStateProjectClose(self):
         """

@@ -32,10 +32,12 @@ class Trigger(threading.Thread):
     def __init__(self, nav_id):
         threading.Thread.__init__(self)
         self.trigger_init = None
+        self.stylusplh = False
+        self.__bind_events()
         try:
             import serial
 
-            self.trigger_init = serial.Serial('COM1', baudrate=115200, timeout=0)
+            self.trigger_init = serial.Serial('COM1', baudrate=9600, timeout=0)
             self.nav_id = nav_id
             self._pause_ = False
             self.start()
@@ -46,19 +48,34 @@ class Trigger(threading.Thread):
         except serial.serialutil.SerialException:
             print 'Connection with port COM1 failed.'
 
+    def __bind_events(self):
+        Publisher.subscribe(self.OnStylusPLH, 'PLH Stylus Button On')
+
+    def OnStylusPLH(self, pubsuv_evt):
+        self.stylusplh = True
+
     def stop(self):
-        if self.trigger_init:
-            self.trigger_init.close()
         self._pause_ = True
 
     def run(self):
         while self.nav_id:
+            self.trigger_init.write('0')
+            sleep(0.3)
             lines = self.trigger_init.readlines()
             # Following lines can simulate a trigger in 3 sec repetitions
             # sleep(3)
             # lines = True
             if lines:
                 wx.CallAfter(Publisher.sendMessage, 'Create marker')
+                sleep(0.5)
+
+            if self.stylusplh:
+                wx.CallAfter(Publisher.sendMessage, 'Create marker')
+                sleep(0.5)
+                self.stylusplh = False
+
             sleep(0.175)
             if self._pause_:
+                if self.trigger_init:
+                    self.trigger_init.close()
                 return

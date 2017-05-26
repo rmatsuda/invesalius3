@@ -203,17 +203,18 @@ class Controller():
         # Import project treating compressed nifti exception
         suptype = ('hdr', 'nii', 'nii.gz', 'par')
         filepath = dialog.ShowImportOtherFilesDialog(id_type)
-        name = filepath.rpartition('\\')[-1].split('.')
+        if filepath is not None:
+            name = filepath.rpartition('\\')[-1].split('.')
 
-        if name[-1] == 'gz':
-            name[1] = 'nii.gz'
+            if name[-1] == 'gz':
+                name[1] = 'nii.gz'
 
-        filetype = name[1].lower()
+            filetype = name[1].lower()
 
-        if filetype in suptype:
-            Publisher.sendMessage("Open other files", filepath)
-        else:
-            dialog.ImportInvalidFiles()
+            if filetype in suptype:
+                Publisher.sendMessage("Open other files", filepath)
+            else:
+                dialog.ImportInvalidFiles()
 
     def ShowDialogOpenProject(self):
         # Offer to save current project if necessary
@@ -353,9 +354,10 @@ class Controller():
         proj = prj.Project()
         proj.Close()
 
+        Publisher.sendMessage('Set slice interaction style', const.STATE_DEFAULT)
         Publisher.sendMessage('Hide content panel')
         Publisher.sendMessage('Close project data')
-        Publisher.sendMessage('Set slice interaction style', const.STATE_DEFAULT)
+        Publisher.sendMessage('Show import panel in frame')
         session = ses.Session()
         session.CloseProject()
 
@@ -551,6 +553,8 @@ class Controller():
         proj.dicom_sample = dicom
         proj.original_orientation =\
                     name_to_const[dicom.image.orientation_label]
+        # Forcing to Axial
+        #  proj.original_orientation = const.AXIAL
         proj.window = float(dicom.image.window)
         proj.level = float(dicom.image.level)
         proj.threshold_range = int(matrix.min()), int(matrix.max())
