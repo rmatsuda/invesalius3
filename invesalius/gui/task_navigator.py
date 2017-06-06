@@ -35,6 +35,7 @@ import invesalius.data.trigger as trig
 import invesalius.gui.dialogs as dlg
 import invesalius.gui.widgets.foldpanelbar as fpb
 import invesalius.gui.widgets.colourselect as csel
+import invesalius.data.transformations as transformations
 
 class TaskPanel(wx.Panel):
     def __init__(self, parent):
@@ -488,9 +489,9 @@ class NeuronavigationPanel(wx.Panel):
                 choice_trck.Enable(False)
                 for btn_c in self.btns_coord:
                     btn_c.Enable(False)
-
-                R, t = db.base_creation_matrix(self.fiducials[0:4, :],self.fiducials[4::, :])
-
+                m = transformations.superimposition_matrix(self.fiducials[4::, :].T,self.fiducials[0:4, :].T)
+                R = m[0:3, 0:3]
+                t = m[0:3, 3]
                 tracker_mode = self.trk_init, self.tracker_id, self.ref_mode_id
                 # FIXME: FRE is taking long to calculate so it updates on GUI delayed to navigation - I think its fixed
                 # TODO: Exhibit FRE in a warning dialog and only starts navigation after user clicks ok

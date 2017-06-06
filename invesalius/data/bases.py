@@ -127,24 +127,3 @@ def flip_x(point):
     x, y, z = point_rot.tolist()[0][:3]
 
     return x, y, z
-
-
-def base_creation_matrix(trk, img):
-
-    from scipy import linalg
-    num_points = len(img)
-
-    trk_mat = np.array(img).T
-    img_mat = np.array(trk).T
-
-    trk_mean = trk_mat.mean(1)
-    img_mean = img_mat.mean(1)
-    trk_M = trk_mat - np.tile(trk_mean, (num_points, 1)).T
-    right_M = img_mat - np.tile(img_mean, (num_points, 1)).T
-
-    M = trk_M.dot(right_M.T)
-    U, S, Vt = linalg.svd(M)
-    V = Vt.T
-    R = V.dot(np.diag((1, 1, linalg.det(U.dot(V))))).dot(U.T)
-    t = img_mean - R.dot(trk_mean)
-    return R, t
