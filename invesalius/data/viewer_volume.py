@@ -116,9 +116,13 @@ class Viewer(wx.Panel):
         self.camera_state = True
 
         self.ball_actor = None
+        self.lineActor = None
+        self.lineActor2 = None
+        self.ball_actorP = None
         self._mode_cross = False
         self._to_show_ball = 0
         self._ball_ref_visibility = False
+        self._coil_ref_visibility = False
 
         self.sen1 = False
         self.sen2 = False
@@ -194,6 +198,8 @@ class Viewer(wx.Panel):
 
         Publisher.subscribe(self.SetBallReferencePosition,
                             'Set ball reference position')
+        Publisher.subscribe(self.SetCoilReferencePosition,
+                            'Set coil reference position')
         Publisher.subscribe(self._check_ball_reference, 'Enable style')
         Publisher.subscribe(self._uncheck_ball_reference, 'Disable style')
 
@@ -250,6 +256,7 @@ class Viewer(wx.Panel):
         if st == const.SLICE_STATE_CROSS:
             self._mode_cross = False
             self.RemoveBallReference()
+            self.RemoveCoilReference()
             self.interactor.Render()
 
     def OnSensors(self, pubsub_evt):
@@ -540,6 +547,53 @@ class Viewer(wx.Panel):
 
         self.ren.AddActor(self.ball_actor)
 
+    def CreateCoilReference(self):
+        self.lineSource = vtk.vtkLineSource()
+        self.lineSource.SetPoint1(1, 0, 0)
+        self.lineSource.SetPoint2(0, 1, 0)
+
+        # Create a mapper and actor
+        lineMapper = vtk.vtkPolyDataMapper()
+        lineMapper.SetInputConnection(self.lineSource.GetOutputPort())
+        self.lineActor = vtk.vtkActor()
+        self.lineActor.GetProperty().SetColor(1, 1, 1)
+        self.lineActor.SetMapper(lineMapper)
+        self.lineActor.GetProperty().SetLineWidth(5)
+
+        self.lineSource2 = vtk.vtkLineSource()
+        self.lineSource2.SetPoint1(1, 0, 0)
+        self.lineSource2.SetPoint2(0, 1, 0)
+
+        # Create a mapper and actor
+        lineMapper = vtk.vtkPolyDataMapper()
+        lineMapper.SetInputConnection(self.lineSource2.GetOutputPort())
+        self.lineActor2 = vtk.vtkActor()
+        self.lineActor2.GetProperty().SetColor(1, 0, 1)
+        self.lineActor2.SetMapper(lineMapper)
+        self.lineActor2.GetProperty().SetLineWidth(5)
+
+        scale = 3.0
+        proj = prj.Project()
+        s = proj.spacing
+        r = (s[0] + s[1] + s[2]) / 3.0 * scale
+
+        self.ball_referenceP = vtk.vtkSphereSource()
+        self.ball_referenceP.SetRadius(r)
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(self.ball_referenceP.GetOutputPort())
+
+        p = vtk.vtkProperty()
+        p.SetColor(0, 1, 0)
+
+        self.ball_actorP = vtk.vtkActor()
+        self.ball_actorP.SetMapper(mapper)
+        self.ball_actorP.SetProperty(p)
+
+        self.ren.AddActor(self.lineActor)
+        self.ren.AddActor(self.lineActor2)
+        self.ren.AddActor(self.ball_actorP)
+
     def ActivateBallReference(self):
         self._mode_cross = True
         self._ball_ref_visibility = True
@@ -547,12 +601,30 @@ class Viewer(wx.Panel):
             if not self.ball_actor:
                 self.CreateBallReference()
 
+    def ActivateCoilReference(self):
+        self._mode_cross = True
+        self._coil_ref_visibility = True
+        if self._to_show_ball:
+            if not self.lineActor:
+                self.CreateCoilReference()
+
     def RemoveBallReference(self):
         self._mode_cross = False
         self._ball_ref_visibility = False
         if self.ball_actor:
             self.ren.RemoveActor(self.ball_actor)
             self.ball_actor = None
+
+    def RemoveCoilReference(self):
+        self._mode_cross = False
+        self._coil_ref_visibility = False
+        if self.lineActor:
+            self.ren.RemoveActor(self.lineActor)
+            self.ren.RemoveActor(self.lineActor2)
+            self.ren.RemoveActor(self.ball_actorP)
+            self.lineActor = None
+            self.lineActor2 = None
+            self.ball_actorP = None
 
     def SetBallReferencePosition(self, pubsub_evt):
         if self._to_show_ball:
@@ -565,6 +637,29 @@ class Viewer(wx.Panel):
 
         else:
             self.RemoveBallReference()
+
+    def SetCoilReferencePosition(self, pubsub_evt):
+        if self._to_show_ball:
+            if not self.lineActor:
+                self.ActivateCoilReference()
+
+            proj = pubsub_evt.data
+            proj_center = proj[0:3]
+            proj_cable = proj[3:6]
+            proj_right = proj[6:9]
+            proj_left = proj[9:12]
+            xp, yp, zp = bases.flip_x(proj_center)
+            xc, yc, zc = bases.flip_x(proj_cable)
+            xr, yr, zr = bases.flip_x(proj_right)
+            xl, yl, zl = bases.flip_x(proj_left)
+            self.ball_referenceP.SetCenter(xp, yp, zp)
+            self.lineSource.SetPoint1((xr + xl) / 2, (yr + yl) / 2, (zr + zl) / 2)
+            self.lineSource.SetPoint2(xc, yc, zc)
+            self.lineSource2.SetPoint1(xr, yr, zr)
+            self.lineSource2.SetPoint2(xl, yl, zl)
+
+        else:
+            self.RemoveCoilReference()
 
     def __bind_events_wx(self):
         #self.Bind(wx.EVT_SIZE, self.OnSize)
@@ -1056,9 +1151,11 @@ class Viewer(wx.Panel):
         if self._mode_cross:
             if self._to_show_ball > 0 and not self._ball_ref_visibility:
                 self.ActivateBallReference()
+                self.ActivateCoilReference()
                 self.interactor.Render()
             elif not self._to_show_ball and self._ball_ref_visibility:
                 self.RemoveBallReference()
+                self.RemoveCoilReference()
                 self.interactor.Render()
 
 class SlicePlane:

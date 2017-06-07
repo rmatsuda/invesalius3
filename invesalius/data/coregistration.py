@@ -61,10 +61,32 @@ class Coregistration(threading.Thread):
             trck_coord = dco.GetCoordinates(trck_init, trck_id, trck_mode)
             trck_xyz = mat([[trck_coord[0]], [trck_coord[1]], [trck_coord[2]]])
 
-            img = q1 + (m_inv*n)*(trck_xyz - q2)
+            if len(trck_coord) > 6:
+                proj_center = mat([[trck_coord[6]], [trck_coord[7]],
+                                          [trck_coord[8]]])
+                proj_cable = mat([[trck_coord[12]], [trck_coord[13]],
+                                          [trck_coord[14]]])
+                proj_right = mat([[trck_coord[15]], [trck_coord[16]],
+                                          [trck_coord[17]]])
+                proj_left = mat([[trck_coord[21]], [trck_coord[22]],
+                                          [trck_coord[23]]])
 
-            coord = (float(img[0]), float(img[1]), float(img[2]), trck_coord[3],
-                     trck_coord[4], trck_coord[5])
+                img = q1 + (m_inv * n) * (trck_xyz - q2)
+                proj_img_center = q1 + (m_inv * n) * (proj_center - q2)
+                proj_img_cable = q1 + (m_inv * n) * (proj_cable - q2)
+                proj_img_right = q1 + (m_inv * n) * (proj_right - q2)
+                proj_img_left = q1 + (m_inv * n) * (proj_left - q2)
+                coord = (float(img[0]), float(img[1]), float(img[2]),
+                         trck_coord[3], trck_coord[4], trck_coord[5],
+                         float(proj_img_center[0]), float(proj_img_center[1]), float(proj_img_center[2]),
+                         float(proj_img_cable[0]), float(proj_img_cable[1]), float(proj_img_cable[2]),
+                         float(proj_img_right[0]), float(proj_img_right[1]), float(proj_img_right[2]),
+                         float(proj_img_left[0]), float(proj_img_left[1]), float(proj_img_left[2]))
+                wx.CallAfter(Publisher.sendMessage, 'Set coil reference position', coord[6:18])
+            else:
+                img = q1 + (m_inv * n) * (trck_xyz - q2)
+                coord = (float(img[0]), float(img[1]), float(img[2]), trck_coord[3],
+                        trck_coord[4], trck_coord[5])
 
             # Tried several combinations and different locations to send the messages,
             # however only this one does not block the GUI during navigation.
