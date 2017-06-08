@@ -200,6 +200,8 @@ class Viewer(wx.Panel):
                             'Set ball reference position')
         Publisher.subscribe(self.SetCoilReferencePosition,
                             'Set coil reference position')
+        Publisher.subscribe(self.HideCoilReference,
+                            'Hide coil reference')
         Publisher.subscribe(self._check_ball_reference, 'Enable style')
         Publisher.subscribe(self._uncheck_ball_reference, 'Disable style')
 
@@ -625,6 +627,17 @@ class Viewer(wx.Panel):
             self.lineActor = None
             self.lineActor2 = None
             self.ball_actorP = None
+
+    def HideCoilReference(self, pubsub_evt):
+        coilID = pubsub_evt.data
+        if coilID:
+            self.lineActor.SetVisibility(1)
+            self.lineActor2.SetVisibility(1)
+            self.ball_actorP.SetVisibility(1)
+        else:
+            self.lineActor.SetVisibility(0)
+            self.lineActor2.SetVisibility(0)
+            self.ball_actorP.SetVisibility(0)
 
     def SetBallReferencePosition(self, pubsub_evt):
         if self._to_show_ball:

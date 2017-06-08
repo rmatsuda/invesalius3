@@ -60,16 +60,15 @@ class Coregistration(threading.Thread):
         while self.nav_id:
             trck_coord = dco.GetCoordinates(trck_init, trck_id, trck_mode)
             trck_xyz = mat([[trck_coord[0]], [trck_coord[1]], [trck_coord[2]]])
-
             if len(trck_coord) > 6:
                 proj_center = mat([[trck_coord[6]], [trck_coord[7]],
                                           [trck_coord[8]]])
                 proj_cable = mat([[trck_coord[12]], [trck_coord[13]],
                                           [trck_coord[14]]])
-                proj_right = mat([[trck_coord[15]], [trck_coord[16]],
-                                          [trck_coord[17]]])
-                proj_left = mat([[trck_coord[21]], [trck_coord[22]],
-                                          [trck_coord[23]]])
+                proj_right = mat([[trck_coord[18]], [trck_coord[19]],
+                                          [trck_coord[20]]])
+                proj_left = mat([[trck_coord[24]], [trck_coord[25]],
+                                          [trck_coord[26]]])
 
                 img = q1 + (m_inv * n) * (trck_xyz - q2)
                 proj_img_center = q1 + (m_inv * n) * (proj_center - q2)

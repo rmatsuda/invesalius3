@@ -457,6 +457,7 @@ class NeuronavigationPanel(wx.Panel):
         coord = None
 
         if self.trk_init and self.tracker_id:
+            Publisher.sendMessage("Toggle Cross", const.SLICE_STATE_CROSS)
             coord = dco.GetCoordinates(self.trk_init, self.tracker_id, self.ref_mode_id)
         else:
             dlg.NavigationTrackerWarning(0, 'choose')

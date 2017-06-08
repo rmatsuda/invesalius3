@@ -53,7 +53,6 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
     trck = trck_init[0]
     scale = np.array([1.0, 1.0, -1.0])
     coord = None
-    coil = True
     k = 0
     # TODO: try to replace while and use some Claron internal computation
 
@@ -65,7 +64,7 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
                                   trck.PositionTooltipZ1 * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
                 reference = np.array([trck.PositionTooltipX2 * scale[0], trck.PositionTooltipY2 * scale[1],
                                       trck.PositionTooltipZ2 * scale[2], trck.AngleX2, trck.AngleY2, trck.AngleZ2])
-                if coil:
+                if trck.coilID:
                     proj_cable = np.array([trck.ProjectionCableX * scale[0], trck.ProjectionCableY * scale[1], trck.ProjectionCableZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
                     proj_right = np.array([trck.ProjectionRightX * scale[0], trck.ProjectionRightY * scale[1], trck.ProjectionRightZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
                     proj_left = np.array([trck.ProjectionLeftX * scale[0], trck.ProjectionLeftY * scale[1], trck.ProjectionLeftZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
@@ -75,11 +74,11 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
                 print "wait, collecting coordinates ..."
         if k == 30:
             coord = dynamic_reference(probe, reference)
-            if coil:
+            if trck.coilID:
                 center = (proj_right[0:3] + proj_left[0:3]) / 2
                 CC = proj_cable[0:3] - center
                 CL = proj_left[0:3] - center
-                cross = np.cross(CC, CL)
+                cross = np.cross(CL, CC)
                 proj_center = cross + center
                 k=(0.01)
                 proj_center = ((center[0]+k*(proj_center[0]-center[0])),
@@ -91,7 +90,6 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
                 coord_left = dynamic_reference(proj_left, reference)
                 coord_right = dynamic_reference(proj_right, reference)
                 coord = coord + coord_center + coord_cable + coord_right + coord_left
-
     else:
         while k < 20:
             try:
@@ -104,6 +102,7 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
                 print "wait, collecting coordinates ..."
 
     Publisher.sendMessage('Sensors ID', [trck.probeID, trck.refID])
+    Publisher.sendMessage('Hide coil reference', trck.coilID)
 
     return coord
 
