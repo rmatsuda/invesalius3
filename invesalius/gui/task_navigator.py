@@ -19,6 +19,7 @@
 
 from functools import partial
 import sys
+import os
 
 import numpy as np
 import wx
@@ -27,6 +28,7 @@ import wx.lib.masked.numctrl
 import wx.lib.foldpanelbar as fpb
 from wx.lib.pubsub import pub as Publisher
 import wx.lib.colourselect as csel
+import wx.lib.platebtn as pbtn
 
 import invesalius.constants as const
 import invesalius.data.bases as db
@@ -35,6 +37,9 @@ import invesalius.data.coregistration as dcr
 import invesalius.data.trackers as dt
 import invesalius.data.trigger as trig
 import invesalius.gui.dialogs as dlg
+
+BTN_NEW = wx.NewId()
+BTN_IMPORT_LOCAL = wx.NewId()
 
 class TaskPanel(wx.Panel):
     def __init__(self, parent):
@@ -136,7 +141,15 @@ class InnerFoldPanel(wx.Panel):
                                       leftSpacing=0, rightSpacing=0)
         fold_panel.Expand(fold_panel.GetFoldPanel(0))
 
-        # Fold 2 - Markers panel
+        # Fold 2 - Correg coil
+        item = fold_panel.AddFoldPanel(_("Coil corregistration"), collapsed=True)
+        ctw = CoilPanel(item)
+
+        fold_panel.ApplyCaptionStyle(item, style)
+        fold_panel.AddFoldPanelWindow(item, ctw, spacing= 0,
+                                      leftSpacing=0, rightSpacing=0)
+
+        # Fold 3 - Markers panel
         item = fold_panel.AddFoldPanel(_("Extra tools"), collapsed=True)
         mtw = MarkersPanel(item)
 
@@ -535,6 +548,84 @@ class NeuronavigationPanel(wx.Panel):
             for n in range(0, 3):
                 self.numctrls_coord[m][n].SetValue(0.0)
 
+class CoilPanel(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent)
+        default_colour = wx.SystemSettings_GetColour(wx.SYS_COLOUR_MENUBAR)
+        self.SetBackgroundColour(default_colour)
+
+        self.SetAutoLayout(1)
+        # self.__bind_events()
+
+        # Button for creating new coil
+        BMP_ADD = wx.Bitmap(os.path.join(const.ICON_DIR, "object_add.png"), wx.BITMAP_TYPE_PNG)
+        button_new_coil = pbtn.PlateButton(self, BTN_NEW, "", BMP_ADD, style=\
+                                   pbtn.PB_STYLE_SQUARE | pbtn.PB_STYLE_DEFAULT)
+        button_new_coil.SetBackgroundColour(self.GetBackgroundColour())
+        self.Bind(wx.EVT_BUTTON, self.OnLinkNewCoil)
+
+        # Fixed hyperlink items
+        tooltip = wx.ToolTip(_("Create new coil"))
+        link_new_coil = hl.HyperLinkCtrl(self, -1, _("Create new coil"))
+        link_new_coil.SetUnderlines(False, False, False)
+        link_new_coil.SetBold(True)
+        link_new_coil.SetColours("BLACK", "BLACK", "BLACK")
+        link_new_coil.SetBackgroundColour(self.GetBackgroundColour())
+        link_new_coil.SetToolTip(tooltip)
+        link_new_coil.AutoBrowse(False)
+        link_new_coil.UpdateLink()
+        link_new_coil.Bind(hl.EVT_HYPERLINK_LEFT, self.OnLinkNewCoil)
+
+        # Create horizontal sizers to represent lines in the panel
+        line_new = wx.BoxSizer(wx.HORIZONTAL)
+        line_new.Add(link_new_coil, 1, wx.EXPAND|wx.GROW| wx.TOP|wx.RIGHT, 4)
+        line_new.Add(button_new_coil, 0, wx.ALL|wx.EXPAND|wx.GROW, 0)
+
+        # Button for import coil
+        BMP_IMPORT = wx.Bitmap(os.path.join(const.ICON_DIR, "file_import.png"), wx.BITMAP_TYPE_PNG)
+        button_import_coil = pbtn.PlateButton(self, BTN_IMPORT_LOCAL, "", BMP_IMPORT, style=\
+                                   pbtn.PB_STYLE_SQUARE | pbtn.PB_STYLE_DEFAULT)
+        button_import_coil.SetBackgroundColour(self.GetBackgroundColour())
+        self.Bind(wx.EVT_BUTTON, self.OnLinkImport)
+
+        # Fixed hyperlink items
+        tooltip = wx.ToolTip(_("Select DICOM, Analyze, NIfTI or REC/PAR files to be reconstructed"))
+        link_import_local = hl.HyperLinkCtrl(self, -1, _("Import medical images..."))
+        link_import_local.SetUnderlines(False, False, False)
+        link_import_local.SetBold(True)
+        link_import_local.SetColours("BLACK", "BLACK", "BLACK")
+        link_import_local.SetBackgroundColour(self.GetBackgroundColour())
+        link_import_local.SetToolTip(tooltip)
+        link_import_local.AutoBrowse(False)
+        link_import_local.UpdateLink()
+        link_import_local.Bind(hl.EVT_HYPERLINK_LEFT, self.OnLinkImport)
+
+        # Create horizontal sizers to represent lines in the panel
+        line_import = wx.BoxSizer(wx.HORIZONTAL)
+        line_import.Add(link_import_local, 1, wx.EXPAND|wx.GROW| wx.TOP|wx.RIGHT, 4)
+        line_import.Add(button_import_coil, 0, wx.ALL|wx.EXPAND|wx.GROW, 0)
+
+        # Add line sizers into main sizer
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        main_sizer.Add(line_new, 0,wx.GROW|wx.EXPAND|wx.LEFT|wx.RIGHT|wx.TOP, 5)
+        main_sizer.Add(line_import, 0, wx.GROW|wx.EXPAND|wx.LEFT|wx.RIGHT|wx.TOP, 5)
+        main_sizer.Fit(self)
+
+        self.SetSizer(main_sizer)
+        self.Update()
+
+    def OnChoiceCoil(self):
+        None
+
+    def OnLinkNewCoil(self):
+        None
+
+    def OnLinkImport(self, event=None):
+        filepath = dlg.ShowLoadCoilDialog()
+
+        if filepath:
+            dt.ClaronTrackerCoilOffset(filepath)
+            Publisher.sendMessage('Update status text in GUI', _("Ready"))
 
 class MarkersPanel(wx.Panel):
     def __init__(self, parent):

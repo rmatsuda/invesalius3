@@ -60,7 +60,6 @@ def DefaultTracker(tracker_id):
 
 def ClaronTracker(tracker_id):
     import invesalius.constants as const
-    from numpy import loadtxt, hstack
 
     trck_init = None
     try:
@@ -75,8 +74,6 @@ def ClaronTracker(tracker_id):
         trck_init.PROBE_NAME = "1Probe"
         trck_init.REF_NAME = "5Ref"
         trck_init.Initialize()
-        a = loadtxt(const.CAL_COIL_DIR)
-        trck_init.GetObjectOffset(*(hstack((a[0], a[1], a[2]))))
 
         if trck_init.GetIdentifyingCamera():
             trck_init.Run()
@@ -233,3 +230,11 @@ def DisconnectTracker(tracker_id):
     Publisher.sendMessage('Update status text in GUI', _("Ready"))
 
     return trck_init, lib_mode
+
+def ClaronTrackerCoilOffset(filepath):
+    from numpy import loadtxt, hstack
+    import pyclaron
+
+    trck_init = pyclaron.pyclaron()
+    a = loadtxt(filepath)
+    trck_init.GetObjectOffset(*(hstack((a[0], a[1], a[2]))))

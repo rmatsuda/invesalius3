@@ -96,27 +96,10 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
                 trck.Run()
                 coord = np.array([trck.PositionTooltipX1 * scale[0], trck.PositionTooltipY1 * scale[1],
                                   trck.PositionTooltipZ1 * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
-                if trck.coilID:
-                    proj_cable = np.array([trck.ProjectionCableX * scale[0], trck.ProjectionCableY * scale[1], trck.ProjectionCableZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
-                    proj_right = np.array([trck.ProjectionRightX * scale[0], trck.ProjectionRightY * scale[1], trck.ProjectionRightZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
-                    proj_left = np.array([trck.ProjectionLeftX * scale[0], trck.ProjectionLeftY * scale[1], trck.ProjectionLeftZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
                 k = 30
             except AttributeError:
                 k += 1
                 print "wait, collecting coordinates ..."
-
-        if trck.coilID:
-            center = (proj_right[0:3] + proj_left[0:3]) / 2
-            CC = proj_cable[0:3] - center
-            CL = proj_left[0:3] - center
-            cross = np.cross(CL, CC)
-            proj_center = cross + center
-            k = (0.01)
-            proj_center = ((center[0] + k * (proj_center[0] - center[0])),
-                           (center[1] + k * (proj_center[1] - center[1])),
-                           (center[2] + k * (proj_center[2] - center[2])),
-                           trck.AngleX1, trck.AngleY1, trck.AngleZ1)
-            coord = coord + proj_center + proj_cable + proj_right + proj_left
 
     Publisher.sendMessage('Sensors ID', [trck.probeID, trck.refID])
     Publisher.sendMessage('Hide coil reference', trck.coilID)
