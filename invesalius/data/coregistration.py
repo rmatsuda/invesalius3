@@ -70,18 +70,15 @@ class Coregistration(threading.Thread):
                 proj_left = mat([[trck_coord[24]], [trck_coord[25]],
                                           [trck_coord[26]]])
 
-                img = q1 + (m_inv * n) * (trck_xyz - q2)
                 proj_img_center = q1 + (m_inv * n) * (proj_center - q2)
                 proj_img_cable = q1 + (m_inv * n) * (proj_cable - q2)
                 proj_img_right = q1 + (m_inv * n) * (proj_right - q2)
                 proj_img_left = q1 + (m_inv * n) * (proj_left - q2)
-                coord = (float(img[0]), float(img[1]), float(img[2]),
-                         trck_coord[3], trck_coord[4], trck_coord[5],
-                         float(proj_img_center[0]), float(proj_img_center[1]), float(proj_img_center[2]),
+                coord = (float(proj_img_center[0]), float(proj_img_center[1]), float(proj_img_center[2]),
                          float(proj_img_cable[0]), float(proj_img_cable[1]), float(proj_img_cable[2]),
                          float(proj_img_right[0]), float(proj_img_right[1]), float(proj_img_right[2]),
                          float(proj_img_left[0]), float(proj_img_left[1]), float(proj_img_left[2]))
-                wx.CallAfter(Publisher.sendMessage, 'Set coil reference position', coord[6:18])
+                wx.CallAfter(Publisher.sendMessage, 'Set coil reference position', coord)
             else:
                 img = q1 + (m_inv * n) * (trck_xyz - q2)
                 coord = (float(img[0]), float(img[1]), float(img[2]), trck_coord[3],
