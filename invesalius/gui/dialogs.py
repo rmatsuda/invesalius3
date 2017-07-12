@@ -218,8 +218,9 @@ WILDCARD_ANALYZE = "Analyze 7.5 (*.hdr)|*.hdr|" \
 
 WILDCARD_NIFTI = "NIfTI 1 (*.nii)|*.nii|" \
                  "Compressed NIfTI (*.nii.gz)|*.nii.gz|" \
+                 "HDR NIfTI (*.hdr)|*.hdr|" \
                  "All files (*.*)|*.*"
-
+#".[jJ][pP][gG]"
 WILDCARD_PARREC = "PAR/REC (*.par)|*.par|" \
                   "All files (*.*)|*.*"
 
@@ -636,8 +637,10 @@ def ImportEmptyDirectory(dirpath):
 def ImportInvalidFiles(ftype="DICOM"):
     if ftype == "Bitmap":
         msg =  _("There are no Bitmap, JPEG, PNG or TIFF files in the selected folder.")
-    else:
+    elif ftype == "DICOM":
         msg = _("There are no DICOM files in the selected folder.")
+    else:
+        msg = _("Invalid file.")
 
     if sys.platform == 'darwin':
         dlg = wx.MessageDialog(None, "", msg,
@@ -1057,6 +1060,7 @@ def ShowAboutDialog(parent):
 
     info.Developers = ["Paulo Henrique Junqueira Amorim",
                        "Thiago Franco de Moraes",
+                       "Hélio Pedrini",
                        "Jorge Vicente Lopes da Silva",
                        "Victor Hugo de Oliveira e Souza (navigator)",
                        "Renan Hiroshi Matsuda (navigator)",
