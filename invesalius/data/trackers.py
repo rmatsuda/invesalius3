@@ -237,4 +237,4 @@ def ClaronTrackerCoilOffset(filepath):
 
     trck_init = pyclaron.pyclaron()
     a = loadtxt(filepath)
-    trck_init.GetObjectOffset(*(hstack((a[0], a[1], a[2]))))
+    trck_init.GetObjectOffset(*(hstack((a[0], a[1], a[2], a[3]))))

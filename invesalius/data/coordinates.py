@@ -81,18 +81,18 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
                 CC = proj_cable[0:3] - center
                 CL = proj_left[0:3] - center
                 CR = proj_right[0:3] - center
-                CH = proj_height - center
+                CH = proj_height[0:3] - center
                 cross = np.cross(CC, CL)
                 cross = transformations.unit_vector(cross)
                 teta = np.rad2deg((transformations.angle_between_vectors(CH, cross)))
-
                 proj_center = np.linalg.norm(CH) * np.cos(np.deg2rad(teta)) * cross + center
-                proj_center.append(trck.AngleX1, trck.AngleY1, trck.AngleZ1)
 
-                proj_left = CL + proj_height
-                proj_right = CR + proj_height
-                proj_cable = CC + proj_height
+                proj_left[0:3] = CL + proj_center
+                proj_right[0:3] = CR + proj_center
+                proj_cable[0:3] = CC + proj_center
                 #proj_height = CH + center
+
+                proj_center = np.append(proj_center, [trck.AngleX1, trck.AngleY1, trck.AngleZ1])
 
                 coord_cable = dynamic_reference(proj_cable, reference)
                 coord_center = dynamic_reference(proj_center, reference)
