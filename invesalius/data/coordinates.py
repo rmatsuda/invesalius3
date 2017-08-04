@@ -23,6 +23,7 @@ import numpy as np
 from time import sleep
 from random import uniform
 from wx.lib.pubsub import pub as Publisher
+import invesalius.data.transformations as transformations
 
 def GetCoordinates(trck_init, trck_id, ref_mode):
 
@@ -68,6 +69,7 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
                     proj_cable = np.array([trck.ProjectionCableX * scale[0], trck.ProjectionCableY * scale[1], trck.ProjectionCableZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
                     proj_right = np.array([trck.ProjectionRightX * scale[0], trck.ProjectionRightY * scale[1], trck.ProjectionRightZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
                     proj_left = np.array([trck.ProjectionLeftX * scale[0], trck.ProjectionLeftY * scale[1], trck.ProjectionLeftZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
+                    proj_height = np.array([trck.ProjectionHeightX * scale[0], trck.ProjectionHeightY * scale[1], trck.ProjectionHeightZ * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
                 k = 30
             except AttributeError:
                 k += 1
@@ -78,15 +80,23 @@ def ClaronCoord(trck_init, trck_id, ref_mode):
                 center = (proj_right[0:3] + proj_left[0:3]) / 2
                 CC = proj_cable[0:3] - center
                 CL = proj_left[0:3] - center
-                cross = np.cross(CL, CC)
-                proj_center = cross + center
-                k=(0.01)
-                proj_center = ((center[0]+k*(proj_center[0]-center[0])),
-                               (center[1]+k*(proj_center[1]-center[1])),
-                               (center[2]+k*(proj_center[2]-center[2])),
-                               trck.AngleX1, trck.AngleY1, trck.AngleZ1)
+                CR = proj_right[0:3] - center
+                CH = proj_height - center
+                cross = np.cross(CC, CL)
+                cross = transformations.unit_vector(cross)
+                teta = np.rad2deg((transformations.angle_between_vectors(CH, cross)))
+
+                proj_center = np.linalg.norm(CH) * np.cos(np.deg2rad(teta)) * cross + center
+                proj_center.append(trck.AngleX1, trck.AngleY1, trck.AngleZ1)
+
+                proj_left = CL + proj_height
+                proj_right = CR + proj_height
+                proj_cable = CC + proj_height
+                #proj_height = CH + center
+
                 coord_cable = dynamic_reference(proj_cable, reference)
                 coord_center = dynamic_reference(proj_center, reference)
+                #coord_height = dynamic_reference(proj_height, reference)
                 coord_left = dynamic_reference(proj_left, reference)
                 coord_right = dynamic_reference(proj_right, reference)
                 coord = coord + coord_center + coord_cable + coord_right + coord_left
@@ -261,6 +271,7 @@ def DebugCoord(trk_init, trck_id, ref_mode):
                            (center[1] + k * (proj_center[1] - center[1])),
                            (center[2] + k * (proj_center[2] - center[2])),
                            uniform(1, 200), uniform(1, 200), uniform(1, 200)])
+
             coord_cable = dynamic_reference(proj_cable, reference)
             coord_center = dynamic_reference(proj_center, reference)
             coord_left = dynamic_reference(proj_left, reference)

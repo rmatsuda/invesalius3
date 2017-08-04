@@ -562,7 +562,7 @@ class CoilPanel(wx.Panel):
         button_new_coil = pbtn.PlateButton(self, BTN_NEW, "", BMP_ADD, style=\
                                    pbtn.PB_STYLE_SQUARE | pbtn.PB_STYLE_DEFAULT)
         button_new_coil.SetBackgroundColour(self.GetBackgroundColour())
-        self.Bind(wx.EVT_BUTTON, self.OnLinkNewCoil)
+        self.Bind(wx.EVT_BUTTON, self.OnLinkNewCoil, button_new_coil)
 
         # Fixed hyperlink items
         tooltip = wx.ToolTip(_("Create new coil"))
@@ -586,7 +586,7 @@ class CoilPanel(wx.Panel):
         button_import_coil = pbtn.PlateButton(self, BTN_IMPORT_LOCAL, "", BMP_IMPORT, style=\
                                    pbtn.PB_STYLE_SQUARE | pbtn.PB_STYLE_DEFAULT)
         button_import_coil.SetBackgroundColour(self.GetBackgroundColour())
-        self.Bind(wx.EVT_BUTTON, self.OnLinkImport)
+        self.Bind(wx.EVT_BUTTON, self.OnLinkImport, button_import_coil)
 
         # Fixed hyperlink items
         tooltip = wx.ToolTip(_("Select DICOM, Analyze, NIfTI or REC/PAR files to be reconstructed"))
@@ -617,7 +617,7 @@ class CoilPanel(wx.Panel):
     def OnChoiceCoil(self):
         None
 
-    def OnLinkNewCoil(self):
+    def OnLinkNewCoil(self, event=None):
         None
 
     def OnLinkImport(self, event=None):
