@@ -510,7 +510,7 @@ class NeuronavigationPanel(wx.Panel):
                 Publisher.sendMessage("Toggle Cross", const.SLICE_STATE_CROSS)
                 Publisher.sendMessage("Hide current mask")
 
-                self.correg = dcr.Coregistration((R,t), nav_id, tracker_mode)
+                self.correg = dcr.Coregistration((R,t, m), nav_id, tracker_mode)
 
         else:
             tooltip = wx.ToolTip(_("Start neuronavigation"))

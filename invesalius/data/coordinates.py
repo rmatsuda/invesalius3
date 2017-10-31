@@ -19,6 +19,7 @@
 
 from math import sin, cos
 import numpy as np
+import transformations as tr
 
 from time import sleep
 from random import uniform
@@ -102,23 +103,25 @@ def PolhemusCoord(trck, trck_id, ref_mode):
 
 
 def PolhemusWrapperCoord(trck, trck_id, ref_mode):
-    if trck_id == 2:
-        scale = 10. * np.array([1., 1.0, -1.0])
-    else:
-        scale = 25.4 * np.array([1., 1.0, -1.0])
+    # if trck_id == 2:
+    scale = 10. * np.array([1., 1.0, -1.0])
+    # else:
+    #     scale = 25.4 * np.array([1., 1.0, -1.0])
     coord = None
 
     if ref_mode:
         trck.Run()
-        probe = np.array([float(trck.PositionTooltipX1) * scale[0], float(trck.PositionTooltipY1) * scale[1],
-                          float(trck.PositionTooltipZ1) * scale[2], float(trck.AngleX1), float(trck.AngleY1),
+
+        probe = np.array([float(trck.PositionTooltipX1) , float(trck.PositionTooltipY1) ,
+                          float(trck.PositionTooltipZ1) , float(trck.AngleX1), float(trck.AngleY1),
                           float(trck.AngleZ1)])
-        reference = np.array([float(trck.PositionTooltipX2) * scale[0], float(trck.PositionTooltipY2) * scale[1],
-                          float(trck.PositionTooltipZ2) * scale[2], float(trck.AngleX2), float(trck.AngleY2),
+        reference = np.array([float(trck.PositionTooltipX2), float(trck.PositionTooltipY2) ,
+                          float(trck.PositionTooltipZ2) , float(trck.AngleX2), float(trck.AngleY2),
                           float(trck.AngleZ2)])
 
         if probe.all() and reference.all():
             coord = dynamic_reference(probe, reference)
+            coord = (coord[0] * scale[0], coord[1] * scale[1], coord[2] * scale[2], coord[3], coord[4], coord[5])
 
     else:
         trck.Run()
@@ -244,20 +247,43 @@ def dynamic_reference(probe, reference):
     :param reference: sensor two defined as reference
     :return: rotated and translated coordinates
     """
+
+    # vet = probe[0:3] - reference[0:3]
+    # vet = np.mat(vet.reshape(3, 1))
+
     a, b, g = np.radians(reference[3:6])
 
-    vet = probe[0:3] - reference[0:3]
-    vet = np.mat(vet.reshape(3, 1))
+    T = tr.translation_matrix(reference[:3])
+    R = tr.euler_matrix(a, b, g, 'rzyx')
+    M = tr.concatenate_matrices(T, R)
+    # M = tr.compose_matrix(angles=np.radians(reference[3:6]), translate=reference[:3])
+    print M
+    probe_4 = np.vstack((np.asmatrix(probe[:3]).reshape([3, 1]), 1.))
+    coord_rot = np.asmatrix(M).I * probe_4
 
-    # Attitude Matrix given by Patriot Manual
-    Mrot = np.mat([[cos(a) * cos(b), sin(b) * sin(g) * cos(a) - cos(g) * sin(a),
-                       cos(a) * sin(b) * cos(g) + sin(a) * sin(g)],
-                      [cos(b) * sin(a), sin(b) * sin(g) * sin(a) + cos(g) * cos(a),
-                       cos(g) * sin(b) * sin(a) - sin(g) * cos(a)],
-                      [-sin(b), sin(g) * cos(b), cos(b) * cos(g)]])
+    # this works fine
+    # a, b, g = np.radians(reference[3:6])
+    # # Attitude Matrix given by Patriot Manual
+    # Mrot = np.mat([[cos(a) * cos(b), sin(b) * sin(g) * cos(a) - cos(g) * sin(a),
+    #                    cos(a) * sin(b) * cos(g) + sin(a) * sin(g)],
+    #                   [cos(b) * sin(a), sin(b) * sin(g) * sin(a) + cos(g) * cos(a),
+    #                    cos(g) * sin(b) * sin(a) - sin(g) * cos(a)],
+    #                   [-sin(b), sin(g) * cos(b), cos(b) * cos(g)]])
+    #
+    # Mrot_4x4 = np.hstack((Mrot, np.asmatrix(reference[:3]).reshape([3, 1])))
+    # Mrot_4x4 = np.vstack((Mrot_4x4, np.matrix([0., 0., 0., 1.])))
+    # probe_4 = np.vstack((np.asmatrix(probe[:3]).reshape([3, 1]), 1.))
+    # coord_rot = Mrot_4x4.I*probe_4
 
-    coord_rot = Mrot.T * vet
+    # this works fine
+    # Mrot_4x4 = np.hstack((Mrot, np.matrix([0., 0., 0.]).reshape([3, 1])))
+    # Mrot_4x4 = np.vstack((Mrot_4x4, np.matrix([0., 0., 0., 1.])))
+    # probe_4 = np.vstack((np.asmatrix(vet).reshape([3, 1]), 1.))
+    # coord_rot = probe_4.reshape([1, 4]) * Mrot_4x4
+
     coord_rot = np.squeeze(np.asarray(coord_rot))
+
+    # print coord_rot
 
     return coord_rot[0], coord_rot[1], coord_rot[2], probe[3], probe[4], probe[5]
 
