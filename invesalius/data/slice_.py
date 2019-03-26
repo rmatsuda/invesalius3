@@ -23,6 +23,8 @@ import tempfile
 
 import numpy as np
 import vtk
+
+from scipy import ndimage
 from wx.lib.pubsub import pub as Publisher
 
 import invesalius.constants as const
@@ -160,6 +162,9 @@ class Slice(with_metaclass(utils.Singleton, object)):
         Publisher.subscribe(self.__hide_current_mask, 'Hide current mask')
         Publisher.subscribe(self.__show_current_mask, 'Show current mask')
         Publisher.subscribe(self.__clean_current_mask, 'Clean current mask')
+
+        Publisher.subscribe(self.__export_slice, 'Export slice')
+        Publisher.subscribe(self.__export_actual_mask, 'Export actual mask')
 
         Publisher.subscribe(self.__set_current_mask_threshold_limits,
                                         'Update threshold limits')
@@ -425,6 +430,23 @@ class Slice(with_metaclass(utils.Singleton, object)):
             # Marking the project as changed
             session = ses.Session()
             session.ChangeProject()
+
+    def __export_slice(self, filename):
+        import h5py
+        f = h5py.File(filename, 'w')
+        f['data'] = self.matrix
+        f['spacing'] = self.spacing
+        f.flush()
+        f.close()
+
+    def __export_actual_mask(self, filename):
+        import h5py
+        f = h5py.File(filename, 'w')
+        self.do_threshold_to_all_slices()
+        f['data'] = self.current_mask.matrix[1:, 1:, 1:]
+        f['spacing'] = self.spacing
+        f.flush()
+        f.close()
 
     def create_temp_mask(self):
         temp_file = tempfile.mktemp()
@@ -898,6 +920,10 @@ class Slice(with_metaclass(utils.Singleton, object)):
         proj = Project()
         proj.mask_dict[index].is_shown = value
         proj.mask_dict[index].on_show()
+
+        if value:
+            threshold_range = proj.mask_dict[index].threshold_range
+            Publisher.sendMessage('Set edition threshold gui', threshold_range=threshold_range)
 
         if (index == self.current_mask.index):
             for buffer_ in self.buffer_slices.values():
@@ -1516,3 +1542,61 @@ class Slice(with_metaclass(utils.Singleton, object)):
         self.buffer_slices['SAGITAL'].discard_vtk_mask()
 
         Publisher.sendMessage('Reload actual slice')
+
+    def calc_image_density(self, mask=None):
+        if mask is None:
+            mask = self.current_mask
+        self.do_threshold_to_all_slices(mask)
+        values = self.matrix[mask.matrix[1:, 1:, 1:] > 127]
+
+        if len(values):
+            _min = values.min()
+            _max = values.max()
+            _mean = values.mean()
+            _std = values.std()
+            return _min, _max, _mean, _std
+        else:
+            return 0, 0, 0, 0
+
+    def calc_mask_area(self, mask=None):
+        if mask is None:
+            mask = self.current_mask
+
+        self.do_threshold_to_all_slices(mask)
+        bin_img = (mask.matrix[1:, 1:, 1:] > 127)
+
+        sx, sy, sz = self.spacing
+
+        kernel = np.zeros((3, 3, 3))
+        kernel[1, 1, 1] = 2 * sx * sy + 2 * sx * sz + 2 * sy * sz
+        kernel[0, 1, 1] = - (sx * sy)
+        kernel[2, 1, 1] = - (sx * sy)
+
+        kernel[1, 0, 1] = - (sx * sz)
+        kernel[1, 2, 1] = - (sx * sz)
+
+        kernel[1, 1, 0] = - (sy * sz)
+        kernel[1, 1, 2] = - (sy * sz)
+
+        #  area = ndimage.generic_filter(bin_img * 1.0, _conv_area, size=(3, 3, 3), mode='constant', cval=1, extra_arguments=(sx, sy, sz)).sum()
+        area = transforms.convolve_non_zero(bin_img * 1.0, kernel, 1).sum()
+
+        return area
+
+def _conv_area(x, sx, sy, sz):
+    x = x.reshape((3, 3, 3))
+    if x[1, 1, 1]:
+        kernel = np.zeros((3, 3, 3))
+        kernel[1, 1, 1] = 2 * sx * sy + 2 * sx * sz + 2 * sy * sz
+        kernel[0, 1, 1] = -(sx * sy)
+        kernel[2, 1, 1] = -(sx * sy)
+
+        kernel[1, 0, 1] = -(sx * sz)
+        kernel[1, 2, 1] = -(sx * sz)
+
+        kernel[1, 1, 0] = -(sy * sz)
+        kernel[1, 1, 2] = -(sy * sz)
+
+        return (x * kernel).sum()
+    else:
+        return 0

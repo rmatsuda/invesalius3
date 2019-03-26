@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 #--------------------------------------------------------------------------
@@ -33,6 +32,8 @@ from wx.lib.pubsub import pub as Publisher
 import random
 from scipy.spatial import distance
 
+from scipy.misc import imsave
+
 import invesalius.constants as const
 import invesalius.data.bases as bases
 import invesalius.data.transformations as tr
@@ -51,6 +52,8 @@ else:
     _has_win32api = False
 
 PROP_MEASURE = 0.8
+
+from invesalius.gui.widgets.canvas_renderer import CanvasRendererCTX, Polygon
 
 class Viewer(wx.Panel):
     def __init__(self, parent):
@@ -87,17 +90,32 @@ class Viewer(wx.Panel):
         interactor.Enable(1)
 
         ren = vtk.vtkRenderer()
-        interactor.GetRenderWindow().AddRenderer(ren)
         self.ren = ren
+
+        canvas_renderer = vtk.vtkRenderer()
+        canvas_renderer.SetLayer(1)
+        canvas_renderer.SetInteractive(0)
+        canvas_renderer.PreserveDepthBufferOn()
+        self.canvas_renderer = canvas_renderer
+
+        interactor.GetRenderWindow().SetNumberOfLayers(2)
+        interactor.GetRenderWindow().AddRenderer(ren)
+        interactor.GetRenderWindow().AddRenderer(canvas_renderer)
 
         self.raycasting_volume = False
 
         self.onclick = False
 
-        self.text = vtku.Text()
+        self.text = vtku.TextZero()
         self.text.SetValue("")
-        self.ren.AddActor(self.text.actor)
+        self.text.SetPosition(const.TEXT_POS_LEFT_UP)
+        #  self.ren.AddActor(self.text.actor)
 
+        #  self.polygon = Polygon(None, is_3d=False)
+
+        #  self.canvas = CanvasRendererCTX(self, self.ren, self.canvas_renderer, 'AXIAL')
+        #  self.canvas.draw_list.append(self.text)
+        #  self.canvas.draw_list.append(self.polygon)
         # axes = vtk.vtkAxesActor()
         # axes.SetXAxisLabelText('x')
         # axes.SetYAxisLabelText('y')
@@ -105,7 +123,6 @@ class Viewer(wx.Panel):
         # axes.SetTotalLength(50, 50, 50)
         #
         # self.ren.AddActor(axes)
-
 
         self.slice_plane = None
 
@@ -248,6 +265,7 @@ class Viewer(wx.Panel):
         Publisher.subscribe(self.RemoveMarker, 'Remove marker')
         Publisher.subscribe(self.BlinkMarker, 'Blink Marker')
         Publisher.subscribe(self.StopBlinkMarker, 'Stop Blink Marker')
+        Publisher.subscribe(self.SetNewColor, 'Set new color')
 
         # Related to object tracking during neuronavigation
         Publisher.subscribe(self.OnNavigationStatus, 'Navigation status')
@@ -506,7 +524,7 @@ class Viewer(wx.Panel):
         mapper.SetInputConnection(ball_ref.GetOutputPort())
 
         prop = vtk.vtkProperty()
-        prop.SetColor(colour)
+        prop.SetColor(colour[0:3])
 
         #adding a new actor for the present ball
         self.staticballs.append(vtk.vtkActor())
@@ -567,6 +585,11 @@ class Viewer(wx.Panel):
                 self.staticballs[self.index].SetVisibility(1)
                 self.Refresh()
             self.index = False
+
+    def SetNewColor(self, index, color):
+        self.staticballs[index].GetProperty().SetColor(color)
+        self.Refresh()
+
 
     def OnTargetMarkerTransparency(self, status, index):
         if status:
@@ -792,6 +815,10 @@ class Viewer(wx.Panel):
             for ind in self.arrow_actor_list:
                 self.ren2.AddActor(ind)
 
+
+            x, y, z = bases.flip_x(coord[0:3])
+            self.tactor.SetPosition(x-20, y-30, z+20)
+
             self.Refresh()
 
     def OnUpdateTargetCoordinates(self, coord):
@@ -818,7 +845,7 @@ class Viewer(wx.Panel):
         tactor.SetMapper(mapper)
         tactor.GetProperty().SetColor(1.0, 0.25, 0.0)
         tactor.SetScale(5)
-        tactor.SetPosition(self.target_coord[0]+10, self.target_coord[1]+30, self.target_coord[2]+20)
+        #tactor.SetPosition(self.target_coord[0]+10, self.target_coord[1]+30, self.target_coord[2]+20)
         self.ren.AddActor(tactor)
         self.tactor = tactor
         tactor.SetCamera(self.ren.GetActiveCamera())
@@ -893,7 +920,7 @@ class Viewer(wx.Panel):
 
         self.dummy_coil_actor = vtk.vtkActor()
         self.dummy_coil_actor.SetMapper(obj_mapper)
-        self.dummy_coil_actor.GetProperty().SetOpacity(0.4)
+        self.dummy_coil_actor.GetProperty().SetOpacity(0.15)
         self.dummy_coil_actor.SetVisibility(1)
         self.dummy_coil_actor.SetUserMatrix(m_img_vtk)
 
@@ -1221,7 +1248,16 @@ class Viewer(wx.Panel):
 
     def __bind_events_wx(self):
         #self.Bind(wx.EVT_SIZE, self.OnSize)
+        #  self.canvas.subscribe_event('LeftButtonPressEvent', self.on_insert_point)
         pass
+
+    def on_insert_point(self, evt):
+        pos = evt.position
+        self.polygon.append_point(pos)
+        self.canvas.Refresh()
+
+        arr = self.canvas.draw_element_to_array([self.polygon,])
+        imsave('/tmp/polygon.png', arr)
 
     def SetInteractorStyle(self, state):
         action = {
@@ -1295,7 +1331,7 @@ class Viewer(wx.Panel):
             self.style = style
 
             # Check each event available for each mode
-            for event in action[state]:
+            for event in action.get(state, []):
                 # Bind event
                 style.AddObserver(event,action[state][event])
 
@@ -1474,6 +1510,7 @@ class Viewer(wx.Panel):
     def OnSetWindowLevelText(self, ww, wl):
         if self.raycasting_volume:
             self.text.SetValue("WL: %d  WW: %d"%(wl, ww))
+            self.canvas.modified = True
 
     def OnShowRaycasting(self):
         if not self.raycasting_volume:
@@ -1746,7 +1783,7 @@ class SlicePlane:
         plane_x.SetRightButtonAction(0)
         plane_x.SetMiddleButtonAction(0)
         cursor_property = plane_x.GetCursorProperty()
-        cursor_property.SetOpacity(0) 
+        cursor_property.SetOpacity(0)
 
         plane_y = self.plane_y = vtk.vtkImagePlaneWidget()
         plane_y.DisplayTextOff()

@@ -54,37 +54,22 @@ def GetCoordinates(trck_init, trck_id, ref_mode):
 
 def ClaronCoord(trck_init, trck_id, ref_mode):
     trck = trck_init[0]
-    scale = np.array([1.0, 1.0, -1.0])
-    coord = None
-    k = 0
-    # TODO: try to replace 'while' and use some Claron internal computation
+    trck.Run()
+    scale = np.array([1.0, 1.0, 1.0])
 
-    if ref_mode:
-        while k < 20:
-            try:
-                trck.Run()
-                probe = np.array([trck.PositionTooltipX1, trck.PositionTooltipY1,
-                                  trck.PositionTooltipZ1, trck.AngleX1, trck.AngleY1, trck.AngleZ1])
-                reference = np.array([trck.PositionTooltipX2, trck.PositionTooltipY2,
-                                      trck.PositionTooltipZ2, trck.AngleZ2,  trck.AngleY2, trck.AngleX2])
-                k = 30
-            except AttributeError:
-                k += 1
-                print("wait, collecting coordinates ...")
-        if k == 30:
-            coord = dynamic_reference(probe, reference)
-            coord = (coord[0] * scale[0], coord[1] * scale[1], coord[2] * scale[2], coord[3], coord[4], coord[5])
-    else:
-        while k < 20:
-            try:
-                trck.Run()
-                coord = np.array([trck.PositionTooltipX1 * scale[0], trck.PositionTooltipY1 * scale[1],
-                                  trck.PositionTooltipZ1 * scale[2], trck.AngleX1, trck.AngleY1, trck.AngleZ1])
+    coord1 = np.array([float(trck.PositionTooltipX1)*scale[0], float(trck.PositionTooltipY1)*scale[1],
+                      float(trck.PositionTooltipZ1)*scale[2],
+                      float(trck.AngleZ1), float(trck.AngleY1), float(trck.AngleX1)])
 
-                k = 30
-            except AttributeError:
-                k += 1
-                print("wait, collecting coordinates ...")
+    coord2 = np.array([float(trck.PositionTooltipX2)*scale[0], float(trck.PositionTooltipY2)*scale[1],
+                       float(trck.PositionTooltipZ2)*scale[2],
+                       float(trck.AngleZ2), float(trck.AngleY2), float(trck.AngleX2)])
+
+    coord3 = np.array([float(trck.PositionTooltipX3) * scale[0], float(trck.PositionTooltipY3) * scale[1],
+                       float(trck.PositionTooltipZ3) * scale[2],
+                       float(trck.AngleZ3), float(trck.AngleY3), float(trck.AngleX3)])
+
+    coord = np.vstack([coord1, coord2, coord3])
 
     Publisher.sendMessage('Sensors ID', probe_id=trck.probeID, ref_id=trck.refID)
 
@@ -124,7 +109,10 @@ def PolhemusWrapperCoord(trck, trck_id, ref_mode):
         coord3 = np.array([float(trck.PositionTooltipX3) * scale[0], float(trck.PositionTooltipY3) * scale[1],
                            float(trck.PositionTooltipZ3) * scale[2],
                            float(trck.AngleX3), float(trck.AngleY3), float(trck.AngleZ3)])
-        coord = np.vstack([coord, coord3])
+        coord4 = np.array([float(trck.PositionTooltipX4) * scale[0], float(trck.PositionTooltipY4) * scale[1],
+                           float(trck.PositionTooltipZ4) * scale[2],
+                           float(trck.AngleX4), float(trck.AngleY4), float(trck.AngleZ4)])
+        coord = np.vstack([coord, coord3, coord4])
 
     if trck.StylusButton:
         Publisher.sendMessage('PLH Stylus Button On')
@@ -223,9 +211,12 @@ def DebugCoord(trk_init, trck_id, ref_mode):
     coord3 = np.array([uniform(1, 200), uniform(1, 200), uniform(1, 200),
                        uniform(-180.0, 180.0), uniform(-180.0, 180.0), uniform(-180.0, 180.0)])
 
+    coord4 = np.array([uniform(1, 200), uniform(1, 200), uniform(1, 200),
+                       uniform(-180.0, 180.0), uniform(-180.0, 180.0), uniform(-180.0, 180.0)])
+
     Publisher.sendMessage('Sensors ID', probe_id=int(uniform(0, 5)), ref_id=int(uniform(0, 5)))
 
-    return np.vstack([coord1, coord2, coord3])
+    return np.vstack([coord1, coord2, coord3, coord4])
 
 
 def dynamic_reference(probe, reference):

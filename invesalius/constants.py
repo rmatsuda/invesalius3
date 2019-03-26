@@ -98,9 +98,15 @@ SAGITAL = 3
 VOLUME = 4
 SURFACE = 5
 
+AXIAL_STR="AXIAL"
+CORONAL_STR="CORONAL"
+SAGITAL_STR="SAGITAL"
+
 # Measure type
 LINEAR = 6
 ANGULAR = 7
+DENSITY_ELLIPSE = 8
+DENSITY_POLYGON = 9
 
 # Colour representing each orientation
 ORIENTATION_COLOUR = {'AXIAL': (1,0,0), # Red
@@ -506,10 +512,11 @@ VTK_WARNING = 0
 #----------------------------------------------------------
 
 [ID_DICOM_IMPORT, ID_PROJECT_OPEN, ID_PROJECT_SAVE_AS, ID_PROJECT_SAVE,
-ID_PROJECT_CLOSE, ID_PROJECT_INFO, ID_SAVE_SCREENSHOT, ID_DICOM_LOAD_NET,
-ID_PRINT_SCREENSHOT, ID_IMPORT_OTHERS_FILES, ID_PREFERENCES, ID_DICOM_NETWORK,
-ID_TIFF_JPG_PNG, ID_VIEW_INTERPOLATED, ID_MODE_NAVIGATION, ID_ANALYZE_IMPORT,
-ID_NIFTI_IMPORT, ID_PARREC_IMPORT] = [wx.NewId() for number in range(18)]
+ ID_PROJECT_CLOSE, ID_EXPORT_SLICE, ID_EXPORT_MASK, ID_PROJECT_INFO,
+ ID_SAVE_SCREENSHOT, ID_DICOM_LOAD_NET, ID_PRINT_SCREENSHOT,
+ ID_IMPORT_OTHERS_FILES, ID_PREFERENCES, ID_DICOM_NETWORK, ID_TIFF_JPG_PNG,
+ ID_VIEW_INTERPOLATED, ID_MODE_NAVIGATION, ID_ANALYZE_IMPORT, ID_NIFTI_IMPORT,
+ ID_PARREC_IMPORT, ID_MODE_DBS] = [wx.NewId() for number in range(21)]
 ID_EXIT = wx.ID_EXIT
 ID_ABOUT = wx.ID_ABOUT
 
@@ -546,8 +553,12 @@ ID_WATERSHED_SEGMENTATION = wx.NewId()
 ID_THRESHOLD_SEGMENTATION = wx.NewId()
 ID_FLOODFILL_SEGMENTATION = wx.NewId()
 ID_CROP_MASK = wx.NewId()
+ID_DENSITY_MEASURE = wx.NewId()
+ID_MASK_DENSITY_MEASURE = wx.NewId()
 ID_CREATE_SURFACE = wx.NewId()
 ID_CREATE_MASK = wx.NewId()
+
+ID_GOTO_SLICE = wx.NewId()
 
 #---------------------------------------------------------
 STATE_DEFAULT = 1000
@@ -559,6 +570,9 @@ STATE_PAN = 1005
 STATE_ANNOTATE = 1006
 STATE_MEASURE_DISTANCE = 1007
 STATE_MEASURE_ANGLE = 1008
+STATE_MEASURE_DENSITY = 1009
+STATE_MEASURE_DENSITY_ELLIPSE = 1010
+STATE_MEASURE_DENSITY_POLYGON = 1011
 
 SLICE_STATE_CROSS = 3006
 SLICE_STATE_SCROLL = 3007
@@ -577,7 +591,11 @@ VOLUME_STATE_SEED = 2001
 
 TOOL_STATES = [STATE_WL, STATE_SPIN, STATE_ZOOM,
                STATE_ZOOM_SL, STATE_PAN, STATE_MEASURE_DISTANCE,
-               STATE_MEASURE_ANGLE]  #, STATE_ANNOTATE]
+               STATE_MEASURE_ANGLE, STATE_MEASURE_DENSITY_ELLIPSE,
+               STATE_MEASURE_DENSITY_POLYGON,
+               ]  #, STATE_ANNOTATE]
+
+
 
 TOOL_SLICE_STATES = [SLICE_STATE_CROSS, SLICE_STATE_SCROLL,
                      SLICE_STATE_REORIENT]
@@ -592,6 +610,9 @@ SLICE_STYLES.append(SLICE_STATE_REMOVE_MASK_PARTS)
 SLICE_STYLES.append(SLICE_STATE_SELECT_MASK_PARTS)
 SLICE_STYLES.append(SLICE_STATE_FFILL_SEGMENTATION)
 SLICE_STYLES.append(SLICE_STATE_CROP_MASK)
+SLICE_STYLES.append(STATE_MEASURE_DENSITY)
+SLICE_STYLES.append(STATE_MEASURE_DENSITY_ELLIPSE)
+SLICE_STYLES.append(STATE_MEASURE_DENSITY_POLYGON)
 
 VOLUME_STYLES = TOOL_STATES + [VOLUME_STATE_SEED, STATE_MEASURE_DISTANCE,
         STATE_MEASURE_ANGLE]
@@ -612,6 +633,9 @@ STYLE_LEVEL = {SLICE_STATE_EDITOR: 1,
                STATE_DEFAULT: 0,
                STATE_MEASURE_ANGLE: 2,
                STATE_MEASURE_DISTANCE: 2,
+               STATE_MEASURE_DENSITY_ELLIPSE: 2,
+               STATE_MEASURE_DENSITY_POLYGON: 2,
+               STATE_MEASURE_DENSITY: 2,
                STATE_WL: 2,
                STATE_SPIN: 2,
                STATE_ZOOM: 2,
@@ -684,6 +708,7 @@ STATIC_REF = 0
 DYNAMIC_REF = 1
 DEFAULT_REF_MODE = DYNAMIC_REF
 REF_MODE = [_("Static ref."), _("Dynamic ref.")]
+FT_SENSOR_MODE = [_("Sensor 3"), _("Sensor 4")]
 
 DEFAULT_COIL = SELECT
 COIL = [_("Select coil:"), _("Neurosoft Figure-8"),
@@ -711,13 +736,11 @@ TIPS_IMG = [_("Select left ear in image"),
 
 BTNS_TRK = {TR1: {3: _('LET')},
             TR2: {4: _('RET')},
-            TR3: {5: _('NAT')},
-            SET: {6: _('SET')}}
+            TR3: {5: _('NAT')}}
 
 TIPS_TRK = [_("Select left ear with spatial tracker"),
             _("Select right ear with spatial tracker"),
-            _("Select nasion with spatial tracker"),
-            _("Show set coordinates in image")]
+            _("Select nasion with spatial tracker")]
 
 OBJL = wx.NewId()
 OBJR = wx.NewId()
@@ -739,6 +762,9 @@ TIPS_OBJ = [_("Select left object fiducial"),
 
 CAL_DIR = os.path.abspath(os.path.join(FILE_PATH, '..', 'navigation', 'mtc_files', 'CalibrationFiles'))
 MAR_DIR = os.path.abspath(os.path.join(FILE_PATH, '..', 'navigation', 'mtc_files', 'Markers'))
+PROBE_NAME = "1Probe"
+REF_NAME = "2Ref"
+OBJ_NAME = "3Coil"
 
 #OBJECT TRACKING
 OBJ_DIR = os.path.abspath(os.path.join(FILE_PATH, '..', 'navigation', 'objects'))

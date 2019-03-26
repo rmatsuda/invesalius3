@@ -53,6 +53,15 @@ import invesalius.gui.preferences as preferences
 VIEW_TOOLS = [ID_LAYOUT, ID_TEXT] =\
                                 [wx.NewId() for number in range(2)]
 
+WILDCARD_EXPORT_SLICE = "HDF5 (*.hdf5)|*.hdf5|" \
+    "NIfTI 1 (*.nii)|*.nii|" \
+    "Compressed NIfTI (*.nii.gz)|*.nii.gz"
+
+IDX_EXT = {
+    0: '.hdf5',
+    1: '.nii',
+    2: '.nii.gz'
+}
 
 
 class MessageWatershed(wx.PopupWindow):
@@ -89,7 +98,7 @@ class Frame(wx.Frame):
         self.SetIcon(wx.Icon(icon_path, wx.BITMAP_TYPE_ICO))
 
         self.mw = None
-
+        self._last_viewer_orientation_focus = const.AXIAL_STR
 
         if sys.platform != 'darwin':
             self.Maximize()
@@ -107,6 +116,7 @@ class Frame(wx.Frame):
 
         self.actived_interpolated_slices = main_menu.view_menu
         self.actived_navigation_mode = main_menu.mode_menu
+        self.actived_dbs_mode = main_menu.mode_dbs
 
         # Set menus, status and task bar
         self.SetMenuBar(main_menu)
@@ -143,6 +153,7 @@ class Frame(wx.Frame):
         sub(self._ShowImportBitmap, 'Show import bitmap panel in frame')
         sub(self._ShowTask, 'Show task panel')
         sub(self._UpdateAUI, 'Update AUI')
+        sub(self._UpdateViewerFocus, 'Set viewer orientation focus')
         sub(self._Exit, 'Exit')
 
     def __bind_events_wx(self):
@@ -378,6 +389,10 @@ class Frame(wx.Frame):
         """
         self.aui_manager.Update()
 
+    def _UpdateViewerFocus(self, orientation):
+        if orientation in (const.AXIAL_STR, const.CORONAL_STR, const.SAGITAL_STR):
+            self._last_viewer_orientation_focus = orientation
+
     def CloseProject(self):
         Publisher.sendMessage('Close Project')
 
@@ -418,6 +433,8 @@ class Frame(wx.Frame):
                 self.SaveProject()
         elif id == const.ID_PROJECT_SAVE_AS:
             self.ShowSaveAsProject()
+        elif id == const.ID_EXPORT_SLICE:
+            self.ExportProject()
         elif id == const.ID_PROJECT_CLOSE:
             self.CloseProject()
         elif id == const.ID_EXIT:
@@ -444,6 +461,8 @@ class Frame(wx.Frame):
             self.OnUndo()
         elif id == wx.ID_REDO:
             self.OnRedo()
+        elif id == const.ID_GOTO_SLICE:
+            self.OnGotoSlice()
 
         elif id == const.ID_BOOLEAN_MASK:
             self.OnMaskBoolean()
@@ -452,6 +471,10 @@ class Frame(wx.Frame):
 
         elif id == const.ID_REORIENT_IMG:
             self.OnReorientImg()
+
+        elif id == const.ID_MASK_DENSITY_MEASURE:
+            ddlg = dlg.MaskDensityDialog(self)
+            ddlg.Show()
 
         elif id == const.ID_THRESHOLD_SEGMENTATION:
             Publisher.sendMessage("Show panel", panel_id=const.ID_THRESHOLD_SEGMENTATION)
@@ -490,9 +513,16 @@ class Frame(wx.Frame):
             else:
                 self.OnInterpolatedSlices(False)
 
+
         elif id == const.ID_MODE_NAVIGATION:
+            Publisher.sendMessage('Deactive dbs folder')
+            Publisher.sendMessage('Active target button')
+            self.actived_dbs_mode.Check(0)
             st = self.actived_navigation_mode.IsChecked(const.ID_MODE_NAVIGATION)
             self.OnNavigationMode(st)
+
+        elif id == const.ID_MODE_DBS:
+            self.OnDbsMode()
 
         elif id == const.ID_CROP_MASK:
             self.OnCropMask()
@@ -502,6 +532,17 @@ class Frame(wx.Frame):
 
         elif id == const.ID_CREATE_MASK:
             Publisher.sendMessage('New mask from shortcut')
+
+    def OnDbsMode(self):
+        st = self.actived_dbs_mode.IsChecked()
+        Publisher.sendMessage('Deactive target button')
+        if st:
+            self.OnNavigationMode(st)
+            Publisher.sendMessage('Active dbs folder')
+        else:
+            self.OnNavigationMode(st)
+            Publisher.sendMessage('Deactive dbs folder')
+        self.actived_navigation_mode.Check(const.ID_MODE_NAVIGATION,0)
 
     def OnInterpolatedSlices(self, status):
         Publisher.sendMessage('Set interpolated slices', flag=status)
@@ -610,6 +651,28 @@ class Frame(wx.Frame):
         """
         Publisher.sendMessage('Show save dialog', save_as=True)
 
+    def ExportProject(self):
+        """
+        Show save dialog to export slice.
+        """
+        p = prj.Project()
+
+        session = ses.Session()
+        last_directory = session.get('paths', 'last_directory_export_prj', '')
+        dlg = wx.FileDialog(None,
+                            "Export slice ...",
+                            last_directory, # last used directory
+                            os.path.split(p.name)[-1], # initial filename
+                            WILDCARD_EXPORT_SLICE,
+                            wx.FD_SAVE|wx.FD_OVERWRITE_PROMPT)
+        if dlg.ShowModal() == wx.ID_OK:
+            filename = dlg.GetPath()
+            ext = IDX_EXT[dlg.GetFilterIndex()]
+            if not filename.endswith(ext):
+                filename += ext
+            p.export_project(filename)
+            session['paths']['last_directory_export_prj'] = os.path.split(filename)[0]
+
     def ShowBitmapImporter(self):
         """
         Tiff, BMP, JPEG and PNG
@@ -630,6 +693,12 @@ class Frame(wx.Frame):
 
     def OnRedo(self):
         Publisher.sendMessage('Redo edition')
+
+    def OnGotoSlice(self):
+        gt_dialog = dlg.GoToDialog(init_orientation=self._last_viewer_orientation_focus)
+        gt_dialog.CenterOnParent()
+        gt_dialog.ShowModal()
+        self.Refresh()
 
     def OnMaskBoolean(self):
         Publisher.sendMessage('Show boolean dialog')
@@ -683,6 +752,7 @@ class MenuBar(wx.MenuBar):
         # not. Eg. save should only be available if a project is open
         self.enable_items = [const.ID_PROJECT_SAVE,
                              const.ID_PROJECT_SAVE_AS,
+                             const.ID_EXPORT_SLICE,
                              const.ID_PROJECT_CLOSE,
                              const.ID_REORIENT_IMG,
                              const.ID_FLOODFILL_MASK,
@@ -701,8 +771,10 @@ class MenuBar(wx.MenuBar):
                              const.ID_WATERSHED_SEGMENTATION,
                              const.ID_THRESHOLD_SEGMENTATION,
                              const.ID_FLOODFILL_SEGMENTATION,
+                             const.ID_MASK_DENSITY_MEASURE,
                              const.ID_CREATE_SURFACE,
-                             const.ID_CREATE_MASK]
+                             const.ID_CREATE_MASK,
+                             const.ID_GOTO_SLICE]
         self.__init_items()
         self.__bind_events()
 
@@ -752,6 +824,7 @@ class MenuBar(wx.MenuBar):
         app(const.ID_PROJECT_OPEN, _("Open project...\tCtrl+O"))
         app(const.ID_PROJECT_SAVE, _("Save project\tCtrl+S"))
         app(const.ID_PROJECT_SAVE_AS, _("Save project as...\tCtrl+Shift+S"))
+        app(const.ID_EXPORT_SLICE, _("Export project"))
         app(const.ID_PROJECT_CLOSE, _("Close project"))
         file_menu.AppendSeparator()
         #app(const.ID_PROJECT_INFO, _("Project Information..."))
@@ -785,6 +858,7 @@ class MenuBar(wx.MenuBar):
         else:
             file_edit.Append(wx.ID_UNDO, _("Undo\tCtrl+Z")).Enable(False)
             file_edit.Append(wx.ID_REDO, _("Redo\tCtrl+Y")).Enable(False)
+        file_edit.Append(const.ID_GOTO_SLICE, _("Go to slice ...\tCtrl+G"))
         #app(const.ID_EDIT_LIST, "Show Undo List...")
         #################################################################
 
@@ -854,6 +928,7 @@ class MenuBar(wx.MenuBar):
         image_menu.AppendMenu(wx.NewId(), _('Flip'), flip_menu)
         image_menu.AppendMenu(wx.NewId(), _('Swap axes'), swap_axes_menu)
 
+        mask_density_menu = image_menu.Append(const.ID_MASK_DENSITY_MEASURE, _(u'Mask Density measure'))
         reorient_menu = image_menu.Append(const.ID_REORIENT_IMG, _(u'Reorient image\tCtrl+Shift+R'))
 
         reorient_menu.Enable(False)
@@ -862,9 +937,7 @@ class MenuBar(wx.MenuBar):
         tools_menu.AppendMenu(-1, _(u"Segmentation"), segmentation_menu)
         tools_menu.AppendMenu(-1, _(u"Surface"), surface_menu)
 
-
         #View
-
         self.view_menu = view_menu = wx.Menu()
         view_menu.Append(const.ID_VIEW_INTERPOLATED, _(u'Interpolated slices'), "", wx.ITEM_CHECK)
 
@@ -907,7 +980,12 @@ class MenuBar(wx.MenuBar):
 
         #Mode
         self.mode_menu = mode_menu = wx.Menu()
-        mode_menu.Append(const.ID_MODE_NAVIGATION, _(u'Navigation mode'), "", wx.ITEM_CHECK)
+        nav_menu = wx.Menu()
+        nav_menu.Append(const.ID_MODE_NAVIGATION, _(u'Transcranial Magnetic Stimulation Mode\tCtrl+T'), "", wx.ITEM_CHECK)
+        #Under development
+        self.mode_dbs = nav_menu.Append(const.ID_MODE_DBS, _(u'Deep Brain Stimulation Mode\tCtrl+B'), "", wx.ITEM_CHECK)
+        self.mode_dbs.Enable(0)
+        mode_menu.Append(-1,_('Navigation Mode'),nav_menu)
 
         v = self.NavigationModeStatus()
         self.mode_menu.Check(const.ID_MODE_NAVIGATION, v)
@@ -950,7 +1028,6 @@ class MenuBar(wx.MenuBar):
 
     def NavigationModeStatus(self):
         status = int(ses.Session().mode)
-
         if status == 1:
             return True
         else:
@@ -1305,8 +1382,11 @@ class ObjectToolBar(AuiToolBar):
                              const.STATE_SPIN, const.STATE_ZOOM_SL,
                              const.STATE_ZOOM,
                              const.STATE_MEASURE_DISTANCE,
-                             const.STATE_MEASURE_ANGLE]
-                             #const.STATE_ANNOTATE]
+                             const.STATE_MEASURE_ANGLE,
+                             const.STATE_MEASURE_DENSITY_ELLIPSE,
+                             const.STATE_MEASURE_DENSITY_POLYGON,
+                             # const.STATE_ANNOTATE
+                             ]
         self.__init_items()
         self.__bind_events()
         self.__bind_events_wx()
@@ -1358,6 +1438,12 @@ class ObjectToolBar(AuiToolBar):
             path = os.path.join(d, "measure_angle_original.png")
             BMP_ANGLE = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
 
+            path = os.path.join(d, "measure_density_ellipse32px.png")
+            BMP_ELLIPSE = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
+
+            path = os.path.join(d, "measure_density_polygon32px.png")
+            BMP_POLYGON = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
+
             #path = os.path.join(d, "tool_annotation_original.png")
             #BMP_ANNOTATE = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
 
@@ -1382,6 +1468,12 @@ class ObjectToolBar(AuiToolBar):
 
             path = os.path.join(d, "measure_angle.png")
             BMP_ANGLE = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
+
+            path = os.path.join(d, "measure_density_ellipse28px.png")
+            BMP_ELLIPSE = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
+
+            path = os.path.join(d, "measure_density_polygon28px.png")
+            BMP_POLYGON = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
 
             #path = os.path.join(d, "tool_annotation.png")
             #BMP_ANNOTATE = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
@@ -1428,6 +1520,20 @@ class ObjectToolBar(AuiToolBar):
                         BMP_ANGLE,
                         wx.NullBitmap,
                         short_help_string = _("Measure angle"),
+                        kind = wx.ITEM_CHECK)
+
+        self.AddTool(const.STATE_MEASURE_DENSITY_ELLIPSE,
+                        "",
+                        BMP_ELLIPSE,
+                        wx.NullBitmap,
+                        short_help_string = _("Measure density ellipse"),
+                        kind = wx.ITEM_CHECK)
+
+        self.AddTool(const.STATE_MEASURE_DENSITY_POLYGON,
+                        "",
+                        BMP_POLYGON,
+                        wx.NullBitmap,
+                        short_help_string = _("Measure density polygon"),
                         kind = wx.ITEM_CHECK)
         #self.AddLabelTool(const.STATE_ANNOTATE,
         #                "",

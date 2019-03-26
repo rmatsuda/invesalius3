@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 #--------------------------------------------------------------------------
 # Software:     InVesalius - Software de Reconstrucao 3D de Imagens Medicas
@@ -19,9 +18,13 @@
 #    detalhes.
 #--------------------------------------------------------------------------
 
+import itertools
 import os
 import random
 import sys
+import time
+
+from concurrent import futures
 
 if sys.platform == 'win32':
     try:
@@ -269,8 +272,10 @@ WILDCARD_MESH_FILES = "STL File format (*.stl)|*.stl|" \
 def ShowOpenProjectDialog():
     # Default system path
     current_dir = os.path.abspath(".")
+    session = ses.Session()
+    last_directory = session.get('paths', 'last_directory_inv3', '')
     dlg = wx.FileDialog(None, message=_("Open InVesalius 3 project..."),
-                        defaultDir="",
+                        defaultDir=last_directory,
                         defaultFile="", wildcard=WILDCARD_OPEN,
                         style=wx.FD_OPEN|wx.FD_CHANGE_DIR)
 
@@ -286,6 +291,10 @@ def ShowOpenProjectDialog():
             filepath = dlg.GetPath()
     except(wx._core.PyAssertionError):  # FIX: win64
         filepath = dlg.GetPath()
+
+    if filepath:
+        session['paths']['last_directory_inv3'] = os.path.split(filepath)[0]
+        session.WriteSessionFile()
 
     # Destroy the dialog. Don't do this until you are done with it!
     # BAD things can happen otherwise!
@@ -338,17 +347,19 @@ def ShowImportDirDialog(self):
 def ShowImportBitmapDirDialog(self):
     current_dir = os.path.abspath(".")
 
-    if sys.platform == 'win32' or sys.platform.startswith('linux'):
-        session = ses.Session()
+    #  if sys.platform == 'win32' or sys.platform.startswith('linux'):
+        #  session = ses.Session()
 
-        if (session.GetLastDicomFolder()):
-            folder = session.GetLastDicomFolder()
-        else:
-            folder = ''
-    else:
-        folder = ''
+        #  if (session.GetLastDicomFolder()):
+            #  folder = session.GetLastDicomFolder()
+        #  else:
+            #  folder = ''
+    #  else:
+        #  folder = ''
+    session = ses.Session()
+    last_directory = session.get('paths', 'last_directory_bitmap', '')
 
-    dlg = wx.DirDialog(self, _("Choose a folder with TIFF, BMP, JPG or PNG:"), folder,
+    dlg = wx.DirDialog(self, _("Choose a folder with TIFF, BMP, JPG or PNG:"), last_directory,
                         style=wx.DD_DEFAULT_STYLE
                         | wx.DD_DIR_MUST_EXIST
                         | wx.DD_CHANGE_DIR)
@@ -364,9 +375,13 @@ def ShowImportBitmapDirDialog(self):
          if (dlg.GetPath()):
              path = dlg.GetPath()
 
-    if (sys.platform != 'darwin'):
-        if (path):
-            session.SetLastDicomFolder(path)
+    #  if (sys.platform != 'darwin'):
+        #  if (path):
+            #  session.SetLastDicomFolder(path)
+
+    if path:
+        session['paths']['last_directory_bitmap'] = path
+        session.WriteSessionFile()
 
     # Only destroy a dialog after you're done with it.
     dlg.Destroy()
@@ -376,9 +391,10 @@ def ShowImportBitmapDirDialog(self):
 
 def ShowImportOtherFilesDialog(id_type):
     # Default system path
-    current_dir = os.path.abspath(".")
+    session = ses.Session()
+    last_directory = session.get('paths', 'last_directory_%d' % id_type, '')
     dlg = wx.FileDialog(None, message=_("Import Analyze 7.5 file"),
-                        defaultDir="",
+                        defaultDir=last_directory,
                         defaultFile="", wildcard=WILDCARD_ANALYZE,
                         style=wx.FD_OPEN | wx.FD_CHANGE_DIR)
 
@@ -408,17 +424,22 @@ def ShowImportOtherFilesDialog(id_type):
         if (dlg.GetPath()):
             filename = dlg.GetPath()
 
+    if filename:
+        session['paths']['last_directory_%d' % id_type] = os.path.split(dlg.GetPath())[0]
+        session.WriteSessionFile()
     # Destroy the dialog. Don't do this until you are done with it!
     # BAD things can happen otherwise!
     dlg.Destroy()
-    os.chdir(current_dir)
     return filename
 
 
 def ShowImportMeshFilesDialog():
     # Default system path
     current_dir = os.path.abspath(".")
+    session = ses.Session()
+    last_directory = session.get('paths', 'last_directory_surface_import', '')
     dlg = wx.FileDialog(None, message=_("Import surface file"),
+                        defaultDir=last_directory,
                         wildcard=WILDCARD_MESH_FILES,
                         style=wx.FD_OPEN | wx.FD_CHANGE_DIR)
 
@@ -436,18 +457,40 @@ def ShowImportMeshFilesDialog():
         if (dlg.GetPath()):
             filename = dlg.GetPath()
 
+    if filename:
+        session['paths']['last_directory_surface_import'] = os.path.split(filename)[0]
+        session.WriteSessionFile()
+
     # Destroy the dialog. Don't do this until you are done with it!
     # BAD things can happen otherwise!
     dlg.Destroy()
     os.chdir(current_dir)
     return filename
 
+def ImportMeshCoordSystem():
+    msg = _("Was the imported mesh created by InVesalius?")
+    if sys.platform == 'darwin':
+        dlg = wx.MessageDialog(None, "", msg,
+                               wx.YES_NO)
+    else:
+        dlg = wx.MessageDialog(None, msg, "InVesalius 3",
+                               wx.YES_NO)
+
+    if dlg.ShowModal() == wx.ID_YES:
+        flag = False
+    else:
+        flag = True
+
+    dlg.Destroy()
+    return flag
 
 def ShowSaveAsProjectDialog(default_filename=None):
     current_dir = os.path.abspath(".")
+    session = ses.Session()
+    last_directory = session.get('paths', 'last_directory_inv3', '')
     dlg = wx.FileDialog(None,
                         _("Save project as..."), # title
-                        "", # last used directory
+                        last_directory, # last used directory
                         default_filename,
                         WILDCARD_INV_SAVE,
                         wx.FD_SAVE|wx.FD_OVERWRITE_PROMPT)
@@ -469,6 +512,10 @@ def ShowSaveAsProjectDialog(default_filename=None):
         if sys.platform != 'win32':
             if filename.split(".")[-1] != extension:
                 filename = filename + "." + extension
+
+    if filename:
+        session['paths']['last_directory_inv3'] = os.path.split(filename)[0]
+        session.WriteSessionFile()
 
     wildcard = dlg.GetFilterIndex()
     os.chdir(current_dir)
@@ -999,7 +1046,7 @@ def EnterMarkerID(default):
     if sys.platform == 'darwin':
         dlg = wx.TextEntryDialog(None, "", msg, defaultValue=default)
     else:
-        dlg = wx.TextEntryDialog(None, msg, "InVesalius 3", defaultValue=default)
+        dlg = wx.TextEntryDialog(None, msg, "InVesalius 3", value=default)
     dlg.ShowModal()
     result = dlg.GetValue()
     dlg.Destroy()
@@ -1230,7 +1277,7 @@ def ShowAboutDialog(parent):
     info = AboutDialogInfo()
     info.Name = "InVesalius"
     info.Version = "3.1.1"
-    info.Copyright = _("(c) 2007-2017 Center for Information Technology Renato Archer - CTI")
+    info.Copyright = _("(c) 2007-2019 Center for Information Technology Renato Archer - CTI")
     info.Description = wordwrap(_("InVesalius is a medical imaging program for 3D reconstruction. It uses a sequence of 2D DICOM image files acquired with CT or MRI scanners. InVesalius allows exporting 3D volumes or surfaces as mesh files for creating physical models of a patient's anatomy using additive manufacturing (3D printing) technologies. The software is developed by Center for Information Technology Renato Archer (CTI), National Council for Scientific and Technological Development (CNPq) and the Brazilian Ministry of Health.\n\n InVesalius must be used only for research. The Center for Information Technology Renato Archer is not responsible for damages caused by the use of this software.\n\n Contact: invesalius@cti.gov.br"), 350, wx.ClientDC(parent))
 
 #       _("InVesalius is a software for medical imaging 3D reconstruction. ")+\
@@ -1275,6 +1322,7 @@ def ShowAboutDialog(parent):
                         u"Maki Sugimoto",
                         u"Mario Regino Moreno Guerra",
                         u"Massimo Crisantemo",
+                        u"Nikolai Guschinsky",
                         u"Nikos Korkakakis",
                         u"Raul Bolliger Neto",
                         u"Sebastian Hilbert",
@@ -1458,13 +1506,16 @@ def ExportPicture(type_=""):
     utils.debug("ExportPicture")
     project = proj.Project()
 
+    session = ses.Session()
+    last_directory = session.get('paths', 'last_directory_screenshot', '')
+
     project_name = "%s_%s" % (project.name, type_)
     if not sys.platform in ('win32', 'linux2', 'linux'):
         project_name += ".jpg"
 
     dlg = wx.FileDialog(None,
                         "Save %s picture as..." %type_,
-                        "", # last used directory
+                        last_directory, # last used directory
                         project_name, # filename
                         WILDCARD_SAVE_PICTURE,
                         wx.FD_SAVE|wx.FD_OVERWRITE_PROMPT)
@@ -1475,6 +1526,8 @@ def ExportPicture(type_=""):
         filetype = INDEX_TO_TYPE[filetype_index]
         extension = INDEX_TO_EXTENSION[filetype_index]
         filename = dlg.GetPath()
+        session['paths']['last_directory_screenshot'] = os.path.split(filename)[0]
+        session.WriteSessionFile()
         if sys.platform != 'win32':
             if filename.split(".")[-1] != extension:
                 filename = filename + "."+ extension
@@ -1663,7 +1716,10 @@ class SurfaceCreationOptionsPanel(wx.Panel):
                               (combo_quality, 0, flag_button, 0)])
 
 
-        # LINES 4 and 5: Checkboxes
+        # LINES 4, 5 and 6: Checkboxes
+        check_box_border_holes = wx.CheckBox(self, -1, _("Fill border holes"))
+        check_box_border_holes.SetValue(False)
+        self.check_box_border_holes = check_box_border_holes
         check_box_holes = wx.CheckBox(self, -1, _("Fill holes"))
         check_box_holes.SetValue(False)
         self.check_box_holes = check_box_holes
@@ -1674,6 +1730,7 @@ class SurfaceCreationOptionsPanel(wx.Panel):
         # Merge all sizers and checkboxes
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(fixed_sizer, 0, wx.TOP|wx.RIGHT|wx.LEFT|wx.GROW|wx.EXPAND, 5)
+        sizer.Add(check_box_border_holes, 0, wx.RIGHT|wx.LEFT, 5)
         sizer.Add(check_box_holes, 0, wx.RIGHT|wx.LEFT, 5)
         sizer.Add(check_box_largest, 0, wx.RIGHT|wx.LEFT, 5)
 
@@ -1688,11 +1745,13 @@ class SurfaceCreationOptionsPanel(wx.Panel):
         mask_index = self.combo_mask.GetSelection()
         surface_name = self.text.GetValue()
         quality = const.SURFACE_QUALITY_LIST[self.combo_quality.GetSelection()]
+        fill_border_holes = self.check_box_border_holes.GetValue()
         fill_holes = self.check_box_holes.GetValue()
         keep_largest = self.check_box_largest.GetValue()
         return {"index": mask_index,
                 "name": surface_name,
                 "quality": quality,
+                "fill_border_holes": fill_border_holes,
                 "fill": fill_holes,
                 "keep_largest": keep_largest,
                 "overwrite": False}
@@ -1849,10 +1908,10 @@ class ClutImagedataDialog(wx.Dialog):
     def __init__(self, histogram, init, end, nodes=None):
         try:
             pre = wx.PreDialog()
-            pre.Create(wx.GetApp().GetTopWindow(), -1, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            pre.Create(wx.GetApp().GetTopWindow(), -1, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
             self.PostCreate(pre)
         except AttributeError:
-            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
 
         self.histogram = histogram
         self.init = init
@@ -1950,7 +2009,7 @@ class WatershedOptionsPanel(wx.Panel):
 
 
 class WatershedOptionsDialog(wx.Dialog):
-    def __init__(self, config, ID=-1, title=_(u'Watershed'), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT):
+    def __init__(self, config, ID=-1, title=_(u'Watershed'), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP):
         try:
             pre = wx.PreDialog()
             pre.Create(wx.GetApp().GetTopWindow(), ID, title=title, style=style)
@@ -2078,7 +2137,7 @@ class MaskBooleanDialog(wx.Dialog):
 
 
 class ReorientImageDialog(wx.Dialog):
-    def __init__(self, ID=-1, title=_(u'Image reorientation'), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT):
+    def __init__(self, ID=-1, title=_(u'Image reorientation'), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP):
         try:
             pre = wx.PreDialog()
             pre.Create(wx.GetApp().GetTopWindow(), ID, title=title, style=style)
@@ -2656,10 +2715,10 @@ class FFillOptionsDialog(wx.Dialog):
     def __init__(self, title, config):
         try:
             pre = wx.PreDialog()
-            pre.Create(wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            pre.Create(wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
             self.PostCreate(pre)
         except AttributeError:
-            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
 
         self.config = config
 
@@ -2769,10 +2828,10 @@ class SelectPartsOptionsDialog(wx.Dialog):
     def __init__(self, config):
         try:
             pre = wx.PreDialog()
-            pre.Create(wx.GetApp().GetTopWindow(), -1, _(u"Select mask parts"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            pre.Create(wx.GetApp().GetTopWindow(), -1, _(u"Select mask parts"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
             self.PostCreate(pre)
         except AttributeError:
-            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, _(u"Select mask parts"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, _(u"Select mask parts"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
 
         self.config = config
 
@@ -2851,7 +2910,7 @@ class SelectPartsOptionsDialog(wx.Dialog):
         self.Destroy()
 
 class FFillSegmentationOptionsDialog(wx.Dialog):
-    def __init__(self, config, ID=-1, title=_(u"Region growing"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT):
+    def __init__(self, config, ID=-1, title=_(u"Region growing"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP):
         try:
             pre = wx.PreDialog()
             pre.Create(wx.GetApp().GetTopWindow(), ID, title=title, style=style)
@@ -3056,7 +3115,7 @@ class FFillSegmentationOptionsDialog(wx.Dialog):
 
 class CropOptionsDialog(wx.Dialog):
     
-    def __init__(self, config, ID=-1, title=_(u"Crop mask"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT):
+    def __init__(self, config, ID=-1, title=_(u"Crop mask"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP):
         self.config = config
         try:
             pre = wx.PreDialog()
@@ -3179,10 +3238,10 @@ class FillHolesAutoDialog(wx.Dialog):
     def __init__(self, title):
         try:
             pre = wx.PreDialog()
-            pre.Create(wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            pre.Create(wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
             self.PostCreate(pre)
         except AttributeError:
-            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
 
         self._init_gui()
 
@@ -3279,6 +3338,112 @@ class FillHolesAutoDialog(wx.Dialog):
             self.panel2dcon.Enable(0)
 
 
+class MaskDensityDialog(wx.Dialog):
+    def __init__(self, title):
+        try:
+            pre = wx.PreDialog()
+            pre.Create(wx.GetApp().GetTopWindow(), -1, _(u"Mask density"), style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT)
+            self.PostCreate(pre)
+        except AttributeError:
+            wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, _(u"Mask density"),
+                               style=wx.DEFAULT_DIALOG_STYLE | wx.FRAME_FLOAT_ON_PARENT)
+
+        self._init_gui()
+        self._bind_events()
+
+    def _init_gui(self):
+        import invesalius.project as prj
+        project = prj.Project()
+
+        self.cmb_mask = wx.ComboBox(self, -1, choices=[], style=wx.CB_READONLY)
+        if project.mask_dict.values():
+            for mask in project.mask_dict.values():
+                self.cmb_mask.Append(mask.name, mask)
+            self.cmb_mask.SetValue(list(project.mask_dict.values())[0].name)
+
+        self.calc_button = wx.Button(self, -1, _(u'Calculate'))
+
+        self.mean_density = self._create_selectable_label_text('')
+        self.min_density = self._create_selectable_label_text('')
+        self.max_density = self._create_selectable_label_text('')
+        self.std_density = self._create_selectable_label_text('')
+
+
+        slt_mask_sizer = wx.FlexGridSizer(rows=1, cols=3, vgap=5, hgap=5)
+        slt_mask_sizer.AddMany([
+            (wx.StaticText(self, -1, _(u'Mask:'), style=wx.ALIGN_CENTER_VERTICAL),  0, wx.ALIGN_CENTRE),
+            (self.cmb_mask, 1, wx.EXPAND),
+            (self.calc_button, 0, wx.EXPAND),
+        ])
+
+        values_sizer = wx.FlexGridSizer(rows=4, cols=2, vgap=5, hgap=5)
+        values_sizer.AddMany([
+            (wx.StaticText(self, -1, _(u'Mean:')),  0, wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_RIGHT),
+            (self.mean_density, 1, wx.EXPAND),
+
+            (wx.StaticText(self, -1, _(u'Minimun:')),  0, wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_RIGHT),
+            (self.min_density, 1, wx.EXPAND),
+
+            (wx.StaticText(self, -1, _(u'Maximun:')),  0, wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_RIGHT),
+            (self.max_density, 1, wx.EXPAND),
+
+            (wx.StaticText(self, -1, _(u'Standard deviation:')),  0, wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_RIGHT),
+            (self.std_density, 1, wx.EXPAND),
+        ])
+
+        sizer = wx.FlexGridSizer(rows=4, cols=1, vgap=5, hgap=5)
+        sizer.AddSpacer(5)
+        sizer.AddMany([
+            (slt_mask_sizer, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5) ,
+            (values_sizer, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 5),
+        ])
+        sizer.AddSpacer(5)
+
+        self.SetSizer(sizer)
+        sizer.Fit(self)
+        self.Layout()
+
+        self.CenterOnScreen()
+
+    def _create_selectable_label_text(self, text):
+        label = wx.TextCtrl(self, -1, style=wx.TE_READONLY)
+        label.SetValue(text)
+        #  label.SetBackgroundColour(self.GetBackgroundColour())
+        return label
+
+    def _bind_events(self):
+        self.calc_button.Bind(wx.EVT_BUTTON, self.OnCalcButton)
+
+    def OnCalcButton(self, evt):
+        from invesalius.data.slice_ import Slice
+        mask = self.cmb_mask.GetClientData(self.cmb_mask.GetSelection())
+
+        slc = Slice()
+
+        with futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(slc.calc_image_density, mask)
+            for c in itertools.cycle(['', '.', '..', '...']):
+                s = _(u'Calculating ') + c
+                self.mean_density.SetValue(s)
+                self.min_density.SetValue(s)
+                self.max_density.SetValue(s)
+                self.std_density.SetValue(s)
+                self.Update()
+                self.Refresh()
+                if future.done():
+                    break
+                time.sleep(0.1)
+
+            _min, _max, _mean, _std = future.result()
+
+        self.mean_density.SetValue(str(_mean))
+        self.min_density.SetValue(str(_min))
+        self.max_density.SetValue(str(_max))
+        self.std_density.SetValue(str(_std))
+
+        print(">>>> Area of mask", slc.calc_mask_area(mask))
+
+
 class ObjectCalibrationDialog(wx.Dialog):
 
     def __init__(self, nav_prop):
@@ -3294,11 +3459,11 @@ class ObjectCalibrationDialog(wx.Dialog):
         try:
             pre = wx.PreDialog()
             pre.Create(wx.GetApp().GetTopWindow(), -1, _(u"Object calibration"), size=(450, 440),
-                       style=wx.DEFAULT_DIALOG_STYLE | wx.FRAME_FLOAT_ON_PARENT)
+                       style=wx.DEFAULT_DIALOG_STYLE | wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
             self.PostCreate(pre)
         except AttributeError:
             wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, _(u"Object calibration"), size=(450, 440),
-                       style=wx.DEFAULT_DIALOG_STYLE | wx.FRAME_FLOAT_ON_PARENT)
+                       style=wx.DEFAULT_DIALOG_STYLE | wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
 
         self._init_gui()
         self.LoadObject()
@@ -3323,6 +3488,18 @@ class ObjectCalibrationDialog(wx.Dialog):
         choice_ref.SetToolTip(tooltip)
         choice_ref.Bind(wx.EVT_COMBOBOX, self.OnChoiceRefMode)
         choice_ref.Enable(0)
+        if self.tracker_id == const.MTC or self.tracker_id == const.FASTRAK or self.tracker_id == const.DEBUGTRACK:
+            choice_ref.Enable(1)
+
+        # ComboBox for sensor selection for FASTRAK
+        tooltip = wx.ToolTip(_(u"Choose the FASTRAK sensor port"))
+        choice_sensor = wx.ComboBox(self, -1, "", size=wx.Size(90, 23),
+                                 choices=const.FT_SENSOR_MODE, style=wx.CB_DROPDOWN | wx.CB_READONLY)
+        choice_sensor.SetSelection(0)
+        choice_sensor.SetToolTip(tooltip)
+        choice_sensor.Bind(wx.EVT_COMBOBOX, self.OnChoiceFTSensor)
+        choice_sensor.Show(False)
+        self.choice_sensor = choice_sensor
 
         # Buttons to finish or cancel object registration
         tooltip = wx.ToolTip(_(u"Registration done"))
@@ -3330,9 +3507,10 @@ class ObjectCalibrationDialog(wx.Dialog):
         btn_ok = wx.Button(self, wx.ID_OK, _(u"Done"), size=wx.Size(90, 30))
         btn_ok.SetToolTip(tooltip)
 
-        extra_sizer = wx.FlexGridSizer(rows=2, cols=1, hgap=5, vgap=30)
+        extra_sizer = wx.FlexGridSizer(rows=3, cols=1, hgap=5, vgap=30)
         extra_sizer.AddMany([choice_ref,
-                             btn_ok])
+                             btn_ok,
+                             choice_sensor])
 
         # Push buttons for object fiducials
         btns_obj = const.BTNS_OBJ
@@ -3485,7 +3663,7 @@ class ObjectCalibrationDialog(wx.Dialog):
         if self.trk_init and self.tracker_id:
             coord_raw = dco.GetCoordinates(self.trk_init, self.tracker_id, self.obj_ref_id)
             if self.obj_ref_id and btn_id == 4:
-                coord = coord_raw[2, :]
+                coord = coord_raw[self.obj_ref_id, :]
             else:
                 coord = coord_raw[0, :]
         else:
@@ -3514,6 +3692,9 @@ class ObjectCalibrationDialog(wx.Dialog):
 
         if evt.GetSelection():
             self.obj_ref_id = 2
+            if self.tracker_id == const.FASTRAK or self.tracker_id == const.DEBUGTRACK:
+                self.choice_sensor.Show(True)
+                self.Layout()
         else:
             self.obj_ref_id = 0
         for m in range(0, 5):
@@ -3522,5 +3703,103 @@ class ObjectCalibrationDialog(wx.Dialog):
             for n in range(0, 3):
                 self.txt_coord[m][n].SetLabel('-')
 
+    def OnChoiceFTSensor(self, evt):
+        if evt.GetSelection():
+            self.obj_ref_id = 3
+        else:
+            self.obj_ref_id = 0
+
     def GetValue(self):
         return self.obj_fiducials, self.obj_orients, self.obj_ref_id, self.obj_name
+
+
+class SurfaceProgressWindow(object):
+    def __init__(self):
+        self.title = "InVesalius 3"
+        self.msg = _("Creating 3D surface ...")
+        self.style = wx.PD_APP_MODAL | wx.PD_APP_MODAL | wx.PD_CAN_ABORT | wx.PD_ELAPSED_TIME
+        self.dlg = wx.ProgressDialog(self.title,
+                                     self.msg,
+                                     parent=None,
+                                     style=self.style)
+        self.running = True
+        self.error = None
+        self.dlg.Show()
+
+    def WasCancelled(self):
+        #  print("Cancelled?", self.dlg.WasCancelled())
+        return self.dlg.WasCancelled()
+
+    def Update(self, msg=None, value=None):
+        if msg is None:
+            self.dlg.Pulse()
+        else:
+            self.dlg.Pulse(msg)
+
+    def Close(self):
+        self.dlg.Destroy()
+
+
+class GoToDialog(wx.Dialog):
+    def __init__(self, title=_("Go to slice ..."), init_orientation=const.AXIAL_STR):
+        wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
+        self._init_gui(init_orientation)
+
+    def _init_gui(self, init_orientation):
+        orientations = (
+            (_("Axial"), const.AXIAL_STR),
+            (_("Coronal"), const.CORONAL_STR),
+            (_("Sagital"), const.SAGITAL_STR),
+        )
+        self.goto_slice = wx.TextCtrl(self, -1, "")
+        self.goto_orientation = wx.ComboBox(self, -1, style=wx.CB_DROPDOWN|wx.CB_READONLY)
+        cb_init = 0
+        for n, orientation in enumerate(orientations):
+            self.goto_orientation.Append(*orientation)
+            if orientation[1] == init_orientation:
+                cb_init = n
+        self.goto_orientation.SetSelection(cb_init)
+
+        btn_ok = wx.Button(self, wx.ID_OK)
+        btn_ok.SetHelpText("")
+        btn_ok.SetDefault()
+
+        btn_cancel = wx.Button(self, wx.ID_CANCEL)
+        btn_cancel.SetHelpText("")
+
+        btnsizer = wx.StdDialogButtonSizer()
+        btnsizer.AddButton(btn_ok)
+        btnsizer.AddButton(btn_cancel)
+        btnsizer.Realize()
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        slice_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        slice_sizer.Add(wx.StaticText(self, -1, _("Slice number"), style=wx.ALIGN_CENTER), 0, wx.ALIGN_CENTER|wx.RIGHT, 5)
+        slice_sizer.Add(self.goto_slice, 1, wx.EXPAND)
+
+        main_sizer.Add((5, 5))
+        main_sizer.Add(slice_sizer, 1, wx.EXPAND|wx.LEFT|wx.RIGHT, 5)
+        main_sizer.Add((5, 5))
+        main_sizer.Add(self.goto_orientation, 1, wx.EXPAND|wx.LEFT|wx.RIGHT, 5)
+        main_sizer.Add((5, 5))
+        main_sizer.Add(btnsizer, 0, wx.EXPAND)
+        main_sizer.Add((5, 5))
+
+        self.SetSizer(main_sizer)
+        main_sizer.Fit(self)
+
+        btn_ok.Bind(wx.EVT_BUTTON, self.OnOk)
+
+    def OnOk(self, evt):
+        try:
+            slice_number = int(self.goto_slice.GetValue())
+            orientation = self.goto_orientation.GetClientData(self.goto_orientation.GetSelection())
+            Publisher.sendMessage(("Set scroll position", orientation), index=slice_number)
+        except ValueError:
+            pass
+        self.Close()
+
+    def Close(self):
+        wx.Dialog.Close(self)
+        self.Destroy()
