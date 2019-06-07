@@ -623,6 +623,7 @@ class NeuronavigationPanel(wx.Panel):
                 Publisher.sendMessage("Navigation status", status=True)
                 Publisher.sendMessage("Toggle Cross", id=const.SLICE_STATE_CROSS)
                 Publisher.sendMessage("Hide current mask")
+                Publisher.sendMessage("Update matrix change", mchange=m_change)
 
                 if self.track_obj:
                     if self.obj_reg_status:
@@ -962,6 +963,7 @@ class MarkersPanel(wx.Panel):
         self.marker_ind = 0
         self.tgt_flag = self.tgt_index = None
         self.nav_status = False
+        self.mchange = None
 
         self.marker_colour = (0.0, 0.0, 1.)
         self.marker_size = 4
@@ -1044,6 +1046,7 @@ class MarkersPanel(wx.Panel):
         Publisher.subscribe(self.OnDeleteAllMarkers, 'Delete all markers')
         Publisher.subscribe(self.OnCreateMarker, 'Create marker')
         Publisher.subscribe(self.UpdateNavigationStatus, 'Navigation status')
+        Publisher.subscribe(self.UpdateMchange, 'Update matrix change')
 
     def UpdateCurrentCoord(self, arg, position):
         self.current_coord = position[:]
@@ -1057,6 +1060,9 @@ class MarkersPanel(wx.Panel):
         else:
             self.nav_status = True
 
+    def UpdateMchange(self, mchange):
+        self.mchange = mchange
+
     def OnMouseRightDown(self, evt):
         self.OnListEditMarkerId(self.nav_status)
 
@@ -1069,6 +1075,9 @@ class MarkersPanel(wx.Panel):
         menu_id.AppendSeparator()
         target_menu = menu_id.Append(1, _('Set as target'))
         menu_id.Bind(wx.EVT_MENU, self.OnMenuSetTarget, target_menu)
+        menu_id.AppendSeparator()
+        send_coord_robot = menu_id.Append(3, _('Send coord to robot'))
+        menu_id.Bind(wx.EVT_MENU, self.OnSendCoord, send_coord_robot)
 
         target_menu.Enable(status)
         self.PopupMenu(menu_id)
@@ -1139,6 +1148,17 @@ class MarkersPanel(wx.Panel):
         self.list_coord[index][6] = r
         self.list_coord[index][7] = g
         self.list_coord[index][8] = b
+
+    def OnSendCoord(self, evt):
+        if isinstance(evt, int):
+            self.lc.Focus(evt)
+        coord = self.list_coord[self.lc.GetFocusedItem()][:6]
+        psi, theta, phi = coord[3:6]
+        if self.mchange is not None:
+            t_probe_raw = np.linalg.inv(self.mchange) * np.asmatrix(tr.translation_matrix(coord[0:3]))
+            coord_inv = t_probe_raw[0, -1], t_probe_raw[1, -1], -t_probe_raw[2, -1], psi, theta, phi
+            print(coord_inv)
+            Publisher.sendMessage('Send coord to robot', coord=coord_inv, mchange=self.mchange)
 
     def OnDeleteAllMarkers(self, evt=None):
         if self.list_coord:
