@@ -27,7 +27,7 @@ from invesalius import utils
 from invesalius import inv_paths
 
 #from invesalius.project import Project
-INVESALIUS_VERSION = "3.1.1"
+INVESALIUS_VERSION = "3.1.99994"
 
 INVESALIUS_ACTUAL_FORMAT_VERSION = 1.1
 
@@ -62,6 +62,7 @@ TEXT_SIZE_SMALL = 11
 TEXT_SIZE = 12
 TEXT_SIZE_LARGE = 16
 TEXT_SIZE_EXTRA_LARGE = 20
+TEXT_SIZE_DIST_NAV = 32
 TEXT_COLOUR = (1,1,1)
 
 (X,Y) = (0.03, 0.97)
