@@ -409,6 +409,7 @@ class NeuronavigationPanel(wx.Panel):
         Publisher.subscribe(self.OnDisconnectTracker, 'Disconnect tracker')
         Publisher.subscribe(self.UpdateObjectRegistration, 'Update object registration')
         Publisher.subscribe(self.OnCloseProject, 'Close project data')
+        Publisher.subscribe(self.SendCoordinates, 'Send coord to robot')
 
     def LoadImageFiducials(self, marker_id, coord):
         for n in const.BTNS_IMG_MKS:
@@ -703,6 +704,8 @@ class NeuronavigationPanel(wx.Panel):
         # TODO: Reset camera initial focus
         Publisher.sendMessage('Reset cam clipping range')
 
+    def SendCoordinates(self, coord):
+        self.trk_init[0].SendCoordinates(coord)
 
 class ObjectRegistrationPanel(wx.Panel):
     def __init__(self, parent):
@@ -1053,7 +1056,6 @@ class MarkersPanel(wx.Panel):
         Publisher.subscribe(self.OnCreateMarker, 'Create marker')
         Publisher.subscribe(self.UpdateNavigationStatus, 'Navigation status')
         Publisher.subscribe(self.UpdateMchange, 'Update matrix change')
-        Publisher.subscribe(self.SendCoordinates, 'Send coord to robot')
 
     def UpdateCurrentCoord(self, arg, position):
         self.current_coord = position[:]
@@ -1163,26 +1165,7 @@ class MarkersPanel(wx.Panel):
             t_probe_raw = np.linalg.inv(self.mchange) * np.asmatrix(tr.translation_matrix(coord[0:3]))
             coord_inv = t_probe_raw[0, -1], t_probe_raw[1, -1], -t_probe_raw[2, -1], psi, theta, phi
             #print(coord_inv)
-            Publisher.sendMessage('Send coord to robot', coord=coord_inv, mchange=self.mchange)
-
-    def SendCoordinates(self, coord, mchange):
-        '''
-        Function to send coordinates to server
-        '''
-        position = {'x':str(coord[0]),# dicionário para enviar as posições
-                    'y':str(coord[1]),
-                    'z':str(coord[2]),
-                    'a':str(coord[3]),
-                    'b':str(coord[4]),
-                    'c':str(coord[5])}
-
-        message = position['x'] + ' ' + position['y'] + ' ' + position['z'] + ' ' + position[
-            'a'] + ' ' + position['b'] + ' ' + position['c'] + '\n'  # precisa do \n para enviar a msg
-        try:
-            print(message)
-            #self.client_socket.send(message.encode())  # enviar a string message
-        except:
-            print('não foi possível enviar a mensagem')
+            Publisher.sendMessage('Send coord to robot', coord=coord_inv)
 
     def OnDeleteAllMarkers(self, evt=None):
         if self.list_coord:

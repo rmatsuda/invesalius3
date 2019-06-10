@@ -47,11 +47,21 @@ def GetCoordinates(trck_init, trck_id, ref_mode):
                     const.PATRIOT: PolhemusCoord,
                     const.CAMERA: CameraCoord,
                     const.POLARIS: PolarisCoord,
+					const.IIWA: IiwaCoord,
                     const.DEBUGTRACK: DebugCoord}
         coord = getcoord[trck_id](trck_init, trck_id, ref_mode)
     else:
         print("Select Tracker")
 
+    return coord
+
+def IiwaCoord(trck_init, trck_id, ref_mode):
+    trck = trck_init[0]
+    trck.sendSignal()
+    coordnateList = trck.getCoordnates()
+    coord2=np.zeros(6)
+    coord3=np.zeros(6)
+    coord = np.vstack([coordnateList, coord2, coord3])
     return coord
 
 def PolarisCoord(trck_init, trck_id, ref_mode):

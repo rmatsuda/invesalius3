@@ -39,6 +39,7 @@ def TrackerConnection(tracker_id, trck_init, action):
                     const.PATRIOT: PolhemusTracker,    # PATRIOT
                     const.CAMERA: CameraTracker,      # CAMERA
                     const.POLARIS: PolarisTracker,      # POLARIS
+					const.IIWA: IiwaTracker,
                     const.DEBUGTRACK: DebugTracker}
 
         trck_init = trck_fcn[tracker_id](tracker_id)
@@ -60,6 +61,15 @@ def DefaultTracker(tracker_id):
 
     # return tracker initialization variable and type of connection
     return trck_init, 'wrapper'
+
+def IiwaTracker(tracker_id):
+	#trck_init = NONE
+	import invesalius.data.TesteInvesaliusClass as iiwa
+	#trck_init = iiwa.IiwaClient('127.0.0.1', "30000") Default IP for PC testing
+	trck_init = iiwa.IiwaClient("192.168.254.220", "30000") #Iiwa IP
+	trck_init.Initialize()
+	return trck_init, 'wrapper'
+
 
 def PolarisTracker(tracker_id):
     from wx import ID_OK
