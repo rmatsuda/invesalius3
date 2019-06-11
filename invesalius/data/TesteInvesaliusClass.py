@@ -12,7 +12,9 @@ class IiwaClient():
         Função responsável por estabelecer a conexão, retorna o socket
         """
         self.client_socket = socket.socket() 
+        self.client_socket_send = socket.socket()
         self.client_socket.connect((self.ip_host, int(self.port))) #tentativa de conexão
+        self.client_socket_send.connect((self.ip_host, int(self.port)+1)) #tentativa de conexão
         print("conected!")
         #return self.client_socket
 
@@ -31,7 +33,7 @@ class IiwaClient():
             'a'] + ' ' + position['b'] + ' ' + position['c'] + '\n'  # precisa do \n para enviar a msg
         try:
             print(message)
-            self.client_socket.send(message.encode())  # enviar a string message
+            self.client_socket_send.send(message.encode())  # enviar a string message
         except:
             print('não foi possível enviar a mensagem')
         
