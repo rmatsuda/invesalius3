@@ -271,6 +271,7 @@ class Viewer(wx.Panel):
         Publisher.subscribe(self.BlinkMarker, 'Blink Marker')
         Publisher.subscribe(self.StopBlinkMarker, 'Stop Blink Marker')
         Publisher.subscribe(self.SetNewColor, 'Set new color')
+        Publisher.subscribe(self.CreateVector_cog2target, 'Create vector')
 
         # Related to object tracking during neuronavigation
         Publisher.subscribe(self.OnNavigationStatus, 'Navigation status')
@@ -609,6 +610,29 @@ class Viewer(wx.Panel):
         self.staticballs[index].GetProperty().SetColor(color)
         self.Refresh()
 
+    def CreateVector_cog2target(self, coord):
+        cog = self.CenterOfMass()
+        coord[1] = -coord[1]
+
+        vector = self.CreateArrowActor(cog, coord[:3])
+        vector.GetProperty().SetColor(1, 0, 0)
+        self.ren.AddActor(vector)
+
+        v3, M_plane_inv = self.Plane(cog, coord[:3])
+        plane = vtk.vtkPlaneSource()
+        plane.SetCenter(coord[:3])
+        plane.SetNormal(v3)
+        print(coord[:3])
+        print(v3)
+        # mapper
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(plane.GetOutputPort())
+        # actor
+        plane_actor = vtk.vtkActor()
+        plane_actor.SetMapper(mapper)
+
+        self.ren.AddActor(plane_actor)
+        self.Refresh()
 
     def OnTargetMarkerTransparency(self, status, index):
         if status:
@@ -877,19 +901,6 @@ class Viewer(wx.Panel):
 
         vtk_colors = vtk.vtkNamedColors()
 
-        a, b, g = np.radians(self.target_coord[3:])
-        r_ref = tr.euler_matrix(a, b, g, 'sxyz')
-        t_ref = tr.translation_matrix(self.target_coord[:3])
-        m_img = np.asmatrix(tr.concatenate_matrices(t_ref, r_ref))
-
-        m_img_vtk = vtk.vtkMatrix4x4()
-
-        for row in range(0, 4):
-            for col in range(0, 4):
-                m_img_vtk.SetElement(row, col, m_img[row, col])
-
-        self.m_img_vtk = m_img_vtk
-
         filename = os.path.join(inv_paths.OBJ_DIR, "aim.stl")
 
         reader = vtk.vtkSTLReader()
@@ -899,13 +910,47 @@ class Viewer(wx.Panel):
 
         # Transform the polydata
         transform = vtk.vtkTransform()
-        transform.SetMatrix(m_img_vtk)
-        transformPD = vtk.vtkTransformPolyDataFilter()
-        transformPD.SetTransform(transform)
-        transformPD.SetInputConnection(reader.GetOutputPort())
-        transformPD.Update()
-        # mapper transform
-        mapper.SetInputConnection(transformPD.GetOutputPort())
+        #PostMultiply is very important to make the transformation works!
+        transform.PostMultiply()
+        if self.target_coord[3:] == [0, 0, 0]:
+            normal = [0, 0, 1]
+            cog = self.CenterOfMass()
+            v3 = np.array(self.target_coord[:3]) - cog  # normal to the plane
+            v3 = v3 / np.linalg.norm(v3)  # unit vector
+
+            dp = np.dot(normal, v3)
+            rotVector = np.cross(normal, v3)
+            theta = np.rad2deg(np.arccos(dp))
+
+            transform.RotateWXYZ(theta, rotVector[0], rotVector[1], rotVector[2])
+            transform.Translate(self.target_coord[0], self.target_coord[1], self.target_coord[2])
+
+            m_img_vtk = transform.GetMatrix()
+            self.target_coord[3:] = transform.GetOrientation()
+            #which one should be used? GetOrientation or euler_from_matrix. There are almost the same
+            # print(self.target_coord)
+            #
+            # rotationMatrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            # for i in range(3):
+            #     for j in range(3):
+            #         rotationMatrix[i][j] = m_img_vtk.GetElement(i, j)
+            #
+            # print(np.rad2deg(tr.euler_from_matrix(rotationMatrix, 'rxyz')))
+
+        else:
+            a, b, g = np.radians(self.target_coord[3:])
+            r_ref = tr.euler_matrix(a, b, g, 'sxyz')
+            t_ref = tr.translation_matrix(self.target_coord[:3])
+            m_img = np.asmatrix(tr.concatenate_matrices(t_ref, r_ref))
+
+            m_img_vtk = vtk.vtkMatrix4x4()
+
+            for row in range(0, 4):
+                for col in range(0, 4):
+                    m_img_vtk.SetElement(row, col, m_img[row, col])
+
+            transform.SetMatrix(m_img_vtk)
+
 
         aim_actor = vtk.vtkActor()
         aim_actor.SetMapper(mapper)
@@ -913,12 +958,15 @@ class Viewer(wx.Panel):
         aim_actor.GetProperty().SetSpecular(.2)
         aim_actor.GetProperty().SetSpecularPower(100)
         aim_actor.GetProperty().SetOpacity(1.)
+        aim_actor.SetUserMatrix(m_img_vtk)
         self.aim_actor = aim_actor
         self.ren.AddActor(aim_actor)
 
-        obj_polydata = self.CreateObjectPolyData(os.path.join(inv_paths.OBJ_DIR, "magstim_fig8_coil_no_handle.stl"))
+        #obj_polydata = self.CreateObjectPolyData(os.path.join(inv_paths.OBJ_DIR, "magstim_fig8_coil_no_handle.stl"))
+        obj_polydata = self.CreateObjectPolyData(os.path.join(inv_paths.OBJ_DIR, "magstim_fig8_coil.stl"))
 
         transform = vtk.vtkTransform()
+        #TODO: fix rotateZ for image target creation (MRI and CT are inverted). User should set the orientation angle
         transform.RotateZ(90)
 
         transform_filt = vtk.vtkTransformPolyDataFilter()
@@ -945,6 +993,8 @@ class Viewer(wx.Panel):
         self.dummy_coil_actor.GetProperty().SetOpacity(.3)
         self.dummy_coil_actor.SetVisibility(1)
         self.dummy_coil_actor.SetUserMatrix(m_img_vtk)
+
+        self.m_img_vtk = m_img_vtk
 
         self.ren.AddActor(self.dummy_coil_actor)
 

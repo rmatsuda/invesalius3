@@ -1130,6 +1130,7 @@ class MarkersPanel(wx.Panel):
         self.lc.SetItemBackgroundColour(self.tgt_index, 'RED')
 
         Publisher.sendMessage('Update target', coord=self.list_coord[self.tgt_index][:6])
+        #Publisher.sendMessage('Create vector', coord=self.list_coord[self.tgt_index][:6])
         Publisher.sendMessage('Set target transparency', status=True, index=self.tgt_index)
         Publisher.sendMessage('Disable or enable coil tracker', status=True)
         self.OnMenuEditMarkerId('TARGET')
@@ -1161,6 +1162,7 @@ class MarkersPanel(wx.Panel):
             self.lc.Focus(evt)
         coord = self.list_coord[self.lc.GetFocusedItem()][:6]
         psi, theta, phi = coord[3:6]
+        #Publisher.sendMessage('Create vector', coord=coord)
         if self.mchange is not None:
             t_probe_raw = np.linalg.inv(self.mchange) * np.asmatrix(tr.translation_matrix(coord[0:3]))
             coord_inv = t_probe_raw[0, -1], t_probe_raw[1, -1], -t_probe_raw[2, -1], psi, theta, phi
