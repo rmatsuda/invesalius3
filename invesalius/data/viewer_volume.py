@@ -32,7 +32,7 @@ from wx.lib.pubsub import pub as Publisher
 import random
 from scipy.spatial import distance
 
-from scipy.misc import imsave
+from imageio import imsave
 
 import invesalius.constants as const
 import invesalius.data.bases as bases
@@ -987,8 +987,8 @@ class Viewer(wx.Panel):
     def CreateTextDistance(self):
         tdist = vtku.Text()
         tdist.SetSize(const.TEXT_SIZE_DIST_NAV)
-        tdist.SetPosition((const.X, 1.03-const.Y))
-        #tdist.ShadowOff()
+        tdist.SetPosition((const.X, 1.-const.Y))
+        tdist.SetVerticalJustificationToBottom()
         tdist.BoldOn()
 
         self.ren.AddActor(tdist.actor)
