@@ -41,6 +41,7 @@ import invesalius.data.vtk_utils as vtku
 import invesalius.project as prj
 import invesalius.style as st
 import invesalius.utils as utils
+import invesalius.gui.dialogs as dlg
 
 from invesalius import inv_paths
 
@@ -913,7 +914,14 @@ class Viewer(wx.Panel):
         #PostMultiply is very important to make the transformation works!
         transform.PostMultiply()
         if self.target_coord[3:] == [0, 0, 0]:
+            target_orientation = dlg.SetTargetOrientation()
+            if target_orientation.ShowModal() == wx.ID_OK:
+                angle = target_orientation.GetValue()
+                print(angle)
+            else:
+                angle = 0
             theta, rotVector = bases.SetTargetOrientation(self.target_coord, cog_surface_index=0)
+            transform.RotateZ(angle)
             transform.RotateWXYZ(theta, rotVector[0], rotVector[1], rotVector[2])
             transform.Translate(self.target_coord[0], self.target_coord[1], self.target_coord[2])
 

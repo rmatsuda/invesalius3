@@ -3959,3 +3959,41 @@ class SetCOMport(wx.Dialog):
 
     def GetValue(self):
         return self.com_ports.GetString(self.com_ports.GetSelection())
+
+class SetTargetOrientation(wx.Dialog):
+    def __init__(self, title=_("Set target orientation")):
+        wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, title, style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
+        self._init_gui()
+
+    def _init_gui(self):
+        self.target_orientation = InvFloatSpinCtrl(self, -1, min_value=-180, max_value=180,
+                                            increment=15, value=90.0, digits=2)
+
+        btn_ok = wx.Button(self, wx.ID_OK)
+        btn_ok.SetHelpText("")
+        btn_ok.SetDefault()
+
+        btn_cancel = wx.Button(self, wx.ID_CANCEL)
+        btn_cancel.SetHelpText("")
+
+        btnsizer = wx.StdDialogButtonSizer()
+        btnsizer.AddButton(btn_ok)
+        btnsizer.AddButton(btn_cancel)
+        btnsizer.Realize()
+
+        sizer_create = wx.FlexGridSizer(1, 2, 10, 10)
+        sizer_create.AddMany([(wx.StaticText(self, 1, _("Target orientation:")), 1, wx.LEFT, 10), (self.target_orientation, 1, wx.RIGHT, 5)])
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        main_sizer.Add((5, 5))
+        main_sizer.Add(sizer_create, proportion=2, flag=wx.CENTER, border=20)
+        main_sizer.Add((5, 5))
+        main_sizer.Add(btnsizer, 0, wx.EXPAND)
+
+        self.SetSizer(main_sizer)
+        main_sizer.Fit(self)
+        self.CenterOnParent()
+
+    def GetValue(self):
+        return float(self.target_orientation.GetValue())

@@ -1165,8 +1165,15 @@ class MarkersPanel(wx.Panel):
         if coord[3:] == [0, 0, 0]:
             from vtk import vtkTransform
             theta, rotVector = db.SetTargetOrientation([coord[0], -coord[1], coord[2]], cog_surface_index=0)
+            target_orientation = dlg.SetTargetOrientation()
+            if target_orientation.ShowModal() == wx.ID_OK:
+                angle = target_orientation.GetValue()
+                print(angle)
+            else:
+                angle = 0
             transform = vtkTransform()
             transform.PostMultiply()
+            transform.RotateZ(angle)
             transform.RotateWXYZ(theta, rotVector[0], rotVector[1], rotVector[2])
             transform.Translate(coord[0], -coord[1], coord[2])
 
