@@ -2,6 +2,7 @@ from math import sqrt, pi
 import numpy as np
 import invesalius.data.coordinates as dco
 import invesalius.data.transformations as tr
+import invesalius.project as prj
 
 
 def angle_calculation(ap_axis, coil_axis):
@@ -269,3 +270,65 @@ def object_registration(fiducials, orients, coord_raw, m_change):
     s0_dyn = np.asmatrix(tr.concatenate_matrices(s0_trans_dyn, s0_rot_dyn))
 
     return t_obj_raw, s0_raw, r_s0_raw, s0_dyn, m_obj_raw, r_obj_img
+
+
+def SetTargetOrientation(target, cog_surface_index):
+    normal = [0, 0, 1]
+    cog = CenterOfMass(cog_surface_index)
+    v3 = np.array(target[:3]) - cog  # normal to the plane
+    v3 = v3 / np.linalg.norm(v3)  # unit vector
+
+    dp = np.dot(normal, v3)
+    rotVector = np.cross(normal, v3)
+    theta = np.rad2deg(np.arccos(dp))
+
+    # which one should be used? GetOrientation or euler_from_matrix. There are almost the same
+    # print(self.target_coord)
+    #
+    # rotationMatrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    # for i in range(3):
+    #     for j in range(3):
+    #         rotationMatrix[i][j] = m_img_vtk.GetElement(i, j)
+    #
+    # print(np.rad2deg(tr.euler_from_matrix(rotationMatrix, 'rxyz')))
+    return theta, rotVector
+
+def CenterOfMass(cog_surface_index=0):
+    proj = prj.Project()
+    surface = proj.surface_dict[cog_surface_index].polydata
+    barycenter = [0.0, 0.0, 0.0]
+    n = surface.GetNumberOfPoints()
+    for i in range(n):
+        point = surface.GetPoint(i)
+        barycenter[0] += point[0]
+        barycenter[1] += point[1]
+        barycenter[2] += point[2]
+    barycenter[0] /= n
+    barycenter[1] /= n
+    barycenter[2] /= n
+
+    return barycenter
+
+def Plane(x0, pTarget):
+    v3 = np.array(pTarget) - x0  # normal to the plane
+    v3 = v3 / np.linalg.norm(v3)  # unit vector
+
+    d = np.dot(v3, x0)
+    # prevents division by zero.
+    if v3[0] == 0.0:
+        v3[0] = 1e-09
+
+    x1 = np.array([(d - v3[1] - v3[2]) / v3[0], 1, 1])
+    v2 = x1 - x0
+    v2 = v2 / np.linalg.norm(v2)  # unit vector
+    v1 = np.cross(v3, v2)
+    v1 = v1 / np.linalg.norm(v1)  # unit vector
+    x2 = x0 + v1
+    # calculates the matrix for the change of coordinate systems (from canonical to the plane's).
+    # remember that, in np.dot(M,p), even though p is a line vector (e.g.,np.array([1,2,3])), it is treated as a column for the dot multiplication.
+    M_plane_inv = np.array([[v1[0], v2[0], v3[0], x0[0]],
+                            [v1[1], v2[1], v3[1], x0[1]],
+                            [v1[2], v2[2], v3[2], x0[2]],
+                            [0, 0, 0, 1]])
+
+    return v3, M_plane_inv

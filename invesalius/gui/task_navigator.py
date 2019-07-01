@@ -1064,7 +1064,7 @@ class MarkersPanel(wx.Panel):
     def UpdateNavigationStatus(self, status):
         if not status:
             sleep(0.5)
-            #self.current_coord[3:] = 0, 0, 0
+            self.current_coord = self.current_coord[0], self.current_coord[1], self.current_coord[2], 0, 0, 0
             self.nav_status = False
         else:
             self.nav_status = True
@@ -1162,11 +1162,19 @@ class MarkersPanel(wx.Panel):
             self.lc.Focus(evt)
         coord = self.list_coord[self.lc.GetFocusedItem()][:6]
         psi, theta, phi = coord[3:6]
-        #Publisher.sendMessage('Create vector', coord=coord)
+        if coord[3:] == [0, 0, 0]:
+            from vtk import vtkTransform
+            theta, rotVector = db.SetTargetOrientation([coord[0], -coord[1], coord[2]], cog_surface_index=0)
+            transform = vtkTransform()
+            transform.PostMultiply()
+            transform.RotateWXYZ(theta, rotVector[0], rotVector[1], rotVector[2])
+            transform.Translate(coord[0], -coord[1], coord[2])
+
+            psi, theta, phi = transform.GetOrientation()
+            print(psi, theta, phi)
         if self.mchange is not None:
             t_probe_raw = np.linalg.inv(self.mchange) * np.asmatrix(tr.translation_matrix(coord[0:3]))
             coord_inv = t_probe_raw[0, -1], t_probe_raw[1, -1], -t_probe_raw[2, -1], psi, theta, phi
-            #print(coord_inv)
             Publisher.sendMessage('Send coord to robot', coord=coord_inv)
 
     def OnDeleteAllMarkers(self, evt=None):

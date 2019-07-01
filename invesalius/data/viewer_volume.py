@@ -611,7 +611,7 @@ class Viewer(wx.Panel):
         self.Refresh()
 
     def CreateVector_cog2target(self, coord):
-        cog = self.CenterOfMass()
+        cog = bases.CenterOfMass(cog_surface_index=0)
         coord[1] = -coord[1]
 
         vector = self.CreateArrowActor(cog, coord[:3])
@@ -913,30 +913,12 @@ class Viewer(wx.Panel):
         #PostMultiply is very important to make the transformation works!
         transform.PostMultiply()
         if self.target_coord[3:] == [0, 0, 0]:
-            normal = [0, 0, 1]
-            cog = self.CenterOfMass()
-            v3 = np.array(self.target_coord[:3]) - cog  # normal to the plane
-            v3 = v3 / np.linalg.norm(v3)  # unit vector
-
-            dp = np.dot(normal, v3)
-            rotVector = np.cross(normal, v3)
-            theta = np.rad2deg(np.arccos(dp))
-
+            theta, rotVector = bases.SetTargetOrientation(self.target_coord, cog_surface_index=0)
             transform.RotateWXYZ(theta, rotVector[0], rotVector[1], rotVector[2])
             transform.Translate(self.target_coord[0], self.target_coord[1], self.target_coord[2])
 
             m_img_vtk = transform.GetMatrix()
             self.target_coord[3:] = transform.GetOrientation()
-            #which one should be used? GetOrientation or euler_from_matrix. There are almost the same
-            # print(self.target_coord)
-            #
-            # rotationMatrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-            # for i in range(3):
-            #     for j in range(3):
-            #         rotationMatrix[i][j] = m_img_vtk.GetElement(i, j)
-            #
-            # print(np.rad2deg(tr.euler_from_matrix(rotationMatrix, 'rxyz')))
-
         else:
             a, b, g = np.radians(self.target_coord[3:])
             r_ref = tr.euler_matrix(a, b, g, 'sxyz')
@@ -948,9 +930,6 @@ class Viewer(wx.Panel):
             for row in range(0, 4):
                 for col in range(0, 4):
                     m_img_vtk.SetElement(row, col, m_img[row, col])
-
-            transform.SetMatrix(m_img_vtk)
-
 
         aim_actor = vtk.vtkActor()
         aim_actor.SetMapper(mapper)
@@ -1079,46 +1058,6 @@ class Viewer(wx.Panel):
         actor_arrow.SetMapper(mapper)
 
         return actor_arrow
-
-    def CenterOfMass(self):
-        proj = prj.Project()
-        surface = proj.surface_dict[0].polydata
-        barycenter = [0.0, 0.0, 0.0]
-        n = surface.GetNumberOfPoints()
-        for i in range(n):
-            point = surface.GetPoint(i)
-            barycenter[0] += point[0]
-            barycenter[1] += point[1]
-            barycenter[2] += point[2]
-        barycenter[0] /= n
-        barycenter[1] /= n
-        barycenter[2] /= n
-
-        return barycenter
-
-    def Plane(self, x0, pTarget):
-        v3 = np.array(pTarget) - x0  # normal to the plane
-        v3 = v3 / np.linalg.norm(v3)  # unit vector
-
-        d = np.dot(v3, x0)
-        # prevents division by zero.
-        if v3[0] == 0.0:
-            v3[0] = 1e-09
-
-        x1 = np.array([(d - v3[1] - v3[2]) / v3[0], 1, 1])
-        v2 = x1 - x0
-        v2 = v2 / np.linalg.norm(v2)  # unit vector
-        v1 = np.cross(v3, v2)
-        v1 = v1 / np.linalg.norm(v1)  # unit vector
-        x2 = x0 + v1
-        # calculates the matrix for the change of coordinate systems (from canonical to the plane's).
-        # remember that, in np.dot(M,p), even though p is a line vector (e.g.,np.array([1,2,3])), it is treated as a column for the dot multiplication.
-        M_plane_inv = np.array([[v1[0], v2[0], v3[0], x0[0]],
-                                [v1[1], v2[1], v3[1], x0[1]],
-                                [v1[2], v2[2], v3[2], x0[2]],
-                                [0, 0, 0, 1]])
-
-        return v3, M_plane_inv
 
     def SetCameraTarget(self):
         cam_focus = self.target_coord[0:3]
@@ -1284,7 +1223,7 @@ class Viewer(wx.Panel):
 
     def OnNavigationStatus(self, status):
         self.nav_status = status
-        self.pTarget = self.CenterOfMass()
+        self.pTarget = bases.CenterOfMass(cog_surface_index=0)
         if self.obj_actor and self.nav_status:
             self.obj_actor.SetVisibility(self.obj_state)
             if not self.obj_state:
