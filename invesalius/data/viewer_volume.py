@@ -914,19 +914,9 @@ class Viewer(wx.Panel):
         #PostMultiply is very important to make the transformation works!
         transform.PostMultiply()
         if self.target_coord[3:] == [0, 0, 0]:
-            target_orientation = dlg.SetTargetOrientation()
-            if target_orientation.ShowModal() == wx.ID_OK:
-                angle = target_orientation.GetValue()
-                print(angle)
-            else:
-                angle = 0
-            theta, rotVector = bases.SetTargetOrientation(self.target_coord, cog_surface_index=0)
-            transform.RotateZ(angle)
-            transform.RotateWXYZ(theta, rotVector[0], rotVector[1], rotVector[2])
-            transform.Translate(self.target_coord[0], self.target_coord[1], self.target_coord[2])
-
-            m_img_vtk = transform.GetMatrix()
-            self.target_coord[3:] = transform.GetOrientation()
+            psi, theta, phi, m_img_vtk = bases.SetTargetOrientation(self.target_coord, cog_surface_index=0)
+            self.target_coord[3:] = psi, theta, phi
+            Publisher.sendMessage('Update marker angles', angles=[psi, theta, phi])
         else:
             a, b, g = np.radians(self.target_coord[3:])
             r_ref = tr.euler_matrix(a, b, g, 'sxyz')

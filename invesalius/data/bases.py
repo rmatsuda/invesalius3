@@ -273,6 +273,9 @@ def object_registration(fiducials, orients, coord_raw, m_change):
 
 
 def SetTargetOrientation(target, cog_surface_index):
+    from vtk import vtkTransform
+    import invesalius.gui.dialogs as dlg
+    from wx import ID_OK
     normal = [0, 0, 1]
     cog = CenterOfMass(cog_surface_index)
     v3 = np.array(target[:3]) - cog  # normal to the plane
@@ -291,7 +294,22 @@ def SetTargetOrientation(target, cog_surface_index):
     #         rotationMatrix[i][j] = m_img_vtk.GetElement(i, j)
     #
     # print(np.rad2deg(tr.euler_from_matrix(rotationMatrix, 'rxyz')))
-    return theta, rotVector
+    target_orientation = dlg.SetTargetOrientation()
+    if target_orientation.ShowModal() == ID_OK:
+        angle = target_orientation.GetValue()
+        print(angle)
+    else:
+        angle = 0
+    transform = vtkTransform()
+    transform.PostMultiply()
+    transform.RotateZ(angle)
+    transform.RotateWXYZ(theta, rotVector[0], rotVector[1], rotVector[2])
+    transform.Translate(target[0], target[1], target[2])
+
+    psi, theta, phi = transform.GetOrientation()
+    m_img_vtk = transform.GetMatrix()
+
+    return psi, theta, phi, m_img_vtk
 
 def CenterOfMass(cog_surface_index=0):
     proj = prj.Project()

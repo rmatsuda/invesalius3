@@ -705,7 +705,8 @@ class NeuronavigationPanel(wx.Panel):
         Publisher.sendMessage('Reset cam clipping range')
 
     def SendCoordinates(self, coord):
-        self.trk_init[0].SendCoordinates(coord)
+        if self.tracker_id == const.IIWA:
+            self.trk_init[0].SendCoordinates(coord)
 
 class ObjectRegistrationPanel(wx.Panel):
     def __init__(self, parent):
@@ -1056,6 +1057,7 @@ class MarkersPanel(wx.Panel):
         Publisher.subscribe(self.OnCreateMarker, 'Create marker')
         Publisher.subscribe(self.UpdateNavigationStatus, 'Navigation status')
         Publisher.subscribe(self.UpdateMchange, 'Update matrix change')
+        Publisher.subscribe(self.UpdateAngles, 'Update marker angles')
 
     def UpdateCurrentCoord(self, arg, position):
         self.current_coord = position[:]
@@ -1072,6 +1074,9 @@ class MarkersPanel(wx.Panel):
     def UpdateMchange(self, mchange):
         self.mchange = mchange
 
+    def UpdateAngles(self, angles):
+        self.list_coord[self.lc.GetFocusedItem()][3:6] = angles[0], angles[1], angles[2]
+
     def OnMouseRightDown(self, evt):
         # TODO: Enable the "Set as target" only when target is created with registered object
         menu_id = wx.Menu()
@@ -1084,7 +1089,7 @@ class MarkersPanel(wx.Panel):
         menu_id.Bind(wx.EVT_MENU, self.OnMenuSetTarget, target_menu)
         menu_id.AppendSeparator()
         send_coord_robot = menu_id.Append(3, _('Send coord to robot'))
-        menu_id.Bind(wx.EVT_MENU, self.OnSendCoord, send_coord_robot)
+        menu_id.Bind(wx.EVT_MENU, self.OnMenuSendCoord, send_coord_robot)
 
         target_menu.Enable(True)
         self.PopupMenu(menu_id)
@@ -1157,27 +1162,14 @@ class MarkersPanel(wx.Panel):
         self.list_coord[index][7] = g
         self.list_coord[index][8] = b
 
-    def OnSendCoord(self, evt):
+    def OnMenuSendCoord(self, evt):
         if isinstance(evt, int):
             self.lc.Focus(evt)
         coord = self.list_coord[self.lc.GetFocusedItem()][:6]
         psi, theta, phi = coord[3:6]
         if coord[3:] == [0, 0, 0]:
-            from vtk import vtkTransform
-            theta, rotVector = db.SetTargetOrientation([coord[0], -coord[1], coord[2]], cog_surface_index=0)
-            target_orientation = dlg.SetTargetOrientation()
-            if target_orientation.ShowModal() == wx.ID_OK:
-                angle = target_orientation.GetValue()
-                print(angle)
-            else:
-                angle = 0
-            transform = vtkTransform()
-            transform.PostMultiply()
-            transform.RotateZ(angle)
-            transform.RotateWXYZ(theta, rotVector[0], rotVector[1], rotVector[2])
-            transform.Translate(coord[0], -coord[1], coord[2])
-
-            psi, theta, phi = transform.GetOrientation()
+            psi, theta, phi, _ = db.SetTargetOrientation([coord[0], -coord[1], coord[2]], cog_surface_index=0)
+            self.UpdateAngles(psi, theta, phi)
             print(psi, theta, phi)
         if self.mchange is not None:
             t_probe_raw = np.linalg.inv(self.mchange) * np.asmatrix(tr.translation_matrix(coord[0:3]))
