@@ -1168,12 +1168,12 @@ class MarkersPanel(wx.Panel):
         coord = self.list_coord[self.lc.GetFocusedItem()][:6]
         psi, theta, phi = coord[3:6]
         if coord[3:] == [0, 0, 0]:
-            psi, theta, phi, _ = db.SetTargetOrientation([coord[0], -coord[1], coord[2]], cog_surface_index=0)
+            phi, theta, psi, _ = db.SetTargetOrientation([coord[0], -coord[1], coord[2]], cog_surface_index=0)
             self.UpdateAngles([psi, theta, phi])
             print(psi, theta, phi)
         if self.mchange is not None:
             t_probe_raw = np.linalg.inv(self.mchange) * np.asmatrix(tr.translation_matrix(coord[0:3]))
-            coord_inv = t_probe_raw[0, -1], t_probe_raw[1, -1], -t_probe_raw[2, -1], np.deg2rad(phi), np.deg2rad(theta), np.deg2rad(psi)
+            coord_inv = t_probe_raw[0, -1], t_probe_raw[1, -1], -t_probe_raw[2, -1], np.deg2rad(psi), np.deg2rad(theta), np.deg2rad(phi)
             Publisher.sendMessage('Send coord to robot', coord=coord_inv)
 
     def OnDeleteAllMarkers(self, evt=None):
