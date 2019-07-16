@@ -33,6 +33,7 @@ class Trigger(threading.Thread):
         threading.Thread.__init__(self)
         self.trigger_init = None
         self.stylusplh = False
+        self.triggeriiwa = False
         self.COM = False
         self.nav_id = nav_id
         self.__bind_events()
@@ -52,9 +53,13 @@ class Trigger(threading.Thread):
 
     def __bind_events(self):
         Publisher.subscribe(self.OnStylusPLH, 'PLH Stylus Button On')
+        Publisher.subscribe(self.OnTriggerIIWA, 'Trigger iiwa')
 
     def OnStylusPLH(self):
         self.stylusplh = True
+
+    def OnTriggerIIWA(self):
+        self.triggeriiwa = True
 
     def stop(self):
         self._pause_ = True
@@ -76,6 +81,11 @@ class Trigger(threading.Thread):
                 wx.CallAfter(Publisher.sendMessage, 'Create marker')
                 sleep(0.5)
                 self.stylusplh = False
+
+            if self.triggeriiwa:
+                wx.CallAfter(Publisher.sendMessage, 'Create marker')
+                sleep(0.5)
+                self.triggeriiwa = False
 
             sleep(0.175)
             if self._pause_:

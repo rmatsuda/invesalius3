@@ -47,12 +47,13 @@ class IiwaClient():
         self.receivedList = self.receivedMessage.split(' ')
         
         self.coordnateList = np.hstack([
-        float(self.receivedList[0]),
-        float(self.receivedList[1]),
-        float(self.receivedList[2]),
-        float(self.receivedList[3]),
-        float(self.receivedList[4]),
-        float(self.receivedList[5])
+        float(self.receivedList[0]), #X
+        float(self.receivedList[1]), #Y
+        float(self.receivedList[2]), #Z
+        float(self.receivedList[3]), #a
+        float(self.receivedList[4]), #b
+        float(self.receivedList[5]), #c
+        int(self.receivedList[6])  #trigger
         ])
         return self.coordnateList
         
@@ -61,6 +62,7 @@ class IiwaClient():
 
     def Close(self):
         self.client_socket.close()
+        self.client_socket_send.close()
 
 
     

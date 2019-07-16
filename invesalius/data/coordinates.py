@@ -61,7 +61,11 @@ def IiwaCoord(trck_init, trck_id, ref_mode):
     coordnateList = trck.getCoordnates()
     coord2=np.zeros(6)
     coord3=np.zeros(6)
-    coord = np.vstack([coordnateList, coord2, coord3])
+    coord = np.vstack([coordnateList[:6], coord2, coord3])
+
+    if coordnateList[6] is True:
+        Publisher.sendMessage('Trigger iiwa')
+
     return coord
 
 def PolarisCoord(trck_init, trck_id, ref_mode):
