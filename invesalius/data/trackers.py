@@ -17,8 +17,10 @@
 #    detalhes.
 #--------------------------------------------------------------------------
 import invesalius.constants as const
+import invesalius.gui.dialogs as dlg
 # TODO: Disconnect tracker when a new one is connected
 # TODO: Test if there are too many prints when connection fails
+# TODO: Redesign error messages. No point in having "Could not connect to default tracker" in all trackers
 
 
 def TrackerConnection(tracker_id, trck_init, action):
@@ -37,6 +39,7 @@ def TrackerConnection(tracker_id, trck_init, action):
                     const.ISOTRAKII: PolhemusTracker,    # ISOTRAK
                     const.PATRIOT: PolhemusTracker,    # PATRIOT
                     const.CAMERA: CameraTracker,      # CAMERA
+                    const.POLARIS: PolarisTracker,      # POLARIS
                     const.DEBUGTRACK: DebugTracker}
 
         trck_init = trck_fcn[tracker_id](tracker_id)
@@ -59,6 +62,35 @@ def DefaultTracker(tracker_id):
     # return tracker initialization variable and type of connection
     return trck_init, 'wrapper'
 
+def PolarisTracker(tracker_id):
+    from wx import ID_OK
+    trck_init = None
+    dlg_port = dlg.SetNDIconfigs()
+    if dlg_port.ShowModal() == ID_OK:
+        com_port, PROBE_DIR, REF_DIR, OBJ_DIR = dlg_port.GetValue()
+        try:
+            import pypolaris
+            lib_mode = 'wrapper'
+            trck_init = pypolaris.pypolaris()
+
+            if trck_init.Initialize(com_port, PROBE_DIR, REF_DIR, OBJ_DIR) != 0:
+                trck_init = None
+                lib_mode = None
+                print('Could not connect to default tracker.')
+            else:
+                print('Connect to polaris tracking device.')
+
+        except:
+            lib_mode = 'error'
+            trck_init = None
+            print('Could not connect to default tracker.')
+    else:
+        lib_mode = None
+        print('Could not connect to default tracker.')
+
+    # return tracker initialization variable and type of connection
+    return trck_init, lib_mode
+
 def CameraTracker(tracker_id):
     trck_init = None
     try:
@@ -74,19 +106,22 @@ def CameraTracker(tracker_id):
     return trck_init, 'wrapper'
 
 def ClaronTracker(tracker_id):
+    import invesalius.constants as const
+    from invesalius import inv_paths
+
     trck_init = None
     try:
         import pyclaron
 
         lib_mode = 'wrapper'
         trck_init = pyclaron.pyclaron()
-        trck_init.CalibrationDir = const.CAL_DIR.encode(const.FS_ENCODE)
-        trck_init.MarkerDir = const.MAR_DIR.encode(const.FS_ENCODE)
+        trck_init.CalibrationDir = inv_paths.MTC_CAL_DIR.encode(const.FS_ENCODE)
+        trck_init.MarkerDir = inv_paths.MTC_MAR_DIR.encode(const.FS_ENCODE)
         trck_init.NumberFramesProcessed = 1
         trck_init.FramesExtrapolated = 0
-        trck_init.PROBE_NAME = const.PROBE_NAME.encode(const.FS_ENCODE)
-        trck_init.REF_NAME = const.REF_NAME.encode(const.FS_ENCODE)
-        trck_init.OBJ_NAME = const.OBJ_NAME.encode(const.FS_ENCODE)
+        trck_init.PROBE_NAME = const.MTC_PROBE_NAME.encode(const.FS_ENCODE)
+        trck_init.REF_NAME = const.MTC_REF_NAME.encode(const.FS_ENCODE)
+        trck_init.OBJ_NAME = const.MTC_OBJ_NAME.encode(const.FS_ENCODE)
         trck_init.Initialize()
 
         if trck_init.GetIdentifyingCamera():
@@ -117,7 +152,7 @@ def PolhemusTracker(tracker_id):
     except:
         trck_init = None
         lib_mode = 'error'
-        print('Could not connect to Polhemus.')
+        print('Could not connect to Polhemus by any method.')
 
     return trck_init, lib_mode
 
@@ -147,35 +182,48 @@ def PlhWrapperConnection(tracker_id):
                 sleep(0.175)
         else:
             trck_init = None
-            print('Could not connect to Polhemus via wrapper without error.')
+            print('Could not connect to Polhemus via wrapper without error: Initialize is False.')
     except:
         trck_init = None
-        print('Could not connect to Polhemus via wrapper with error.')
+        print('Could not connect to Polhemus via wrapper without error: Import failed.')
 
     return trck_init
 
 
 def PlhSerialConnection(tracker_id):
     import serial
+    from wx import ID_OK
+    trck_init = None
+    dlg_port = dlg.SetCOMport()
+    if dlg_port.ShowModal() == ID_OK:
+        com_port = dlg_port.GetValue()
+        try:
+            trck_init = serial.Serial(com_port, baudrate=115200, timeout=0.03)
 
-    trck_init = serial.Serial('COM1', baudrate=115200, timeout=0.03)
+            if tracker_id == 2:
+                # Polhemus FASTRAK needs configurations first
+                trck_init.write(0x02, str.encode("u"))
+                trck_init.write(0x02, str.encode("F"))
+            elif tracker_id == 3:
+                # Polhemus ISOTRAK needs to set tracking point from
+                # center to tip.
+                trck_init.write(str.encode("u"))
+                trck_init.write(str.encode("F"))
+                trck_init.write(str.encode("Y"))
 
-    if tracker_id == 2:
-        # Polhemus FASTRAK needs configurations first
-        trck_init.write(0x02, str.encode("u"))
-        trck_init.write(0x02, str.encode("F"))
-    elif tracker_id == 3:
-        # Polhemus ISOTRAK needs to set tracking point from
-        # center to tip.
-        trck_init.write(str.encode("u"))
-        trck_init.write(str.encode("F"))
-        trck_init.write(str.encode("Y"))
+            trck_init.write(str.encode("P"))
+            data = trck_init.readlines()
+            if not data:
+                trck_init = None
+                print('Could not connect to Polhemus serial without error.')
 
-    trck_init.write(str.encode("P"))
-    data = trck_init.readlines()
-    if not data:
-        trck_init = None
-        print('Could not connect to Polhemus serial without error.')
+        except:
+            lib_mode = 'error'
+            trck_init = None
+            print('Could not connect to default tracker.')
+    else:
+        lib_mode = None
+        print('Could not connect to default tracker.')
 
     return trck_init
 

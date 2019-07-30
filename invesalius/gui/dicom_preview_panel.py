@@ -35,7 +35,8 @@ import invesalius.constants as const
 import invesalius.reader.dicom_reader as dicom_reader
 import invesalius.data.vtk_utils as vtku
 import invesalius.utils as utils
-import vtkgdcm
+from invesalius.data import imagedata_utils
+from invesalius.data import converters
 
 if sys.platform == 'win32':
     try:
@@ -149,7 +150,7 @@ class DicomPaintPanel(wx.Panel):
         self.Bind(wx.EVT_SIZE, self.OnSize)
 
     def _build_bitmap(self, image):
-        bmp = wx.BitmapFromImage(image)
+        bmp = wx.Bitmap(image)
         return bmp
 
     def _image_resize(self, image):
@@ -890,20 +891,20 @@ class SingleImagePreview(wx.Panel):
             reader.Update()
 
             image = reader.GetOutput()
-
         else:
-            rdicom = vtkgdcm.vtkGDCMImageReader()
+            filename = dicom.image.file
             if _has_win32api:
-                rdicom.SetFileName(win32api.GetShortPathName(dicom.image.file).encode(const.FS_ENCODE))
-            else:
-                rdicom.SetFileName(dicom.image.file)
-            rdicom.Update()
+                filename = win32api.GetShortPathName(filename).encode(const.FS_ENCODE)
+
+            np_image = imagedata_utils.read_dcm_slice_as_np2(filename)
+            print(">>> spacing", dicom.image.spacing)
+            vtk_image = converters.to_vtk(np_image, dicom.image.spacing, 0, 'AXIAL')
 
             # ADJUST CONTRAST
             window_level = dicom.image.level
             window_width = dicom.image.window
             colorer = vtk.vtkImageMapToWindowLevelColors()
-            colorer.SetInputConnection(rdicom.GetOutputPort())
+            colorer.SetInputData(vtk_image)
             colorer.SetWindow(float(window_width))
             colorer.SetLevel(float(window_level))
             colorer.Update()

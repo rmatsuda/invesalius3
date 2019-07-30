@@ -229,17 +229,15 @@ class InnerFoldPanel(wx.Panel):
     def __bind_events(self):
         Publisher.subscribe(self.OnCheckStatus, 'Navigation status')
         Publisher.subscribe(self.OnShowObject, 'Update track object state')
-        Publisher.subscribe(self.OnVolumeCamera, 'Target navigation mode')
+        Publisher.subscribe(self.OnVolumeCamera, 'Change camera checkbox')
         Publisher.subscribe(self.OnShowDbs, "Active dbs folder")
         Publisher.subscribe(self.OnHideDbs, "Deactive dbs folder")
 
     def OnShowDbs(self):
         self.dbs_item.Show()
 
-
     def OnHideDbs(self):
         self.dbs_item.Hide()
-
 
     def OnCheckStatus(self, status):
         if status:
@@ -257,6 +255,7 @@ class InnerFoldPanel(wx.Panel):
         if not evt:
             if flag:
                 self.checkobj.Enable(True)
+                self.checkobj.SetValue(True)
                 self.track_obj = True
                 Publisher.sendMessage('Status target button', status=True)
             else:
@@ -267,11 +266,11 @@ class InnerFoldPanel(wx.Panel):
 
         Publisher.sendMessage('Update show object state', state=self.checkobj.GetValue())
 
-    def OnVolumeCamera(self, evt=None, target_mode=None):
+    def OnVolumeCamera(self, evt=None, status=None):
         if not evt:
-            if target_mode is True:
-                self.checkcamera.SetValue(0)
+            self.checkcamera.SetValue(status)
         Publisher.sendMessage('Update volume camera state', camera_state=self.checkcamera.GetValue())
+
 
 class NeuronavigationPanel(wx.Panel):
     def __init__(self, parent):
@@ -478,8 +477,6 @@ class NeuronavigationPanel(wx.Panel):
                     ctrl.SetSelection(0)
                     print("Tracker not connected!")
                 else:
-                    Publisher.sendMessage('Update status text in GUI',
-                                          label=_("Ready"))
                     ctrl.SetSelection(self.tracker_id)
                     print("Tracker connected!")
         elif choice == const.DISCTRACK:
@@ -513,10 +510,8 @@ class NeuronavigationPanel(wx.Panel):
                     dlg.NavigationTrackerWarning(self.tracker_id, self.trk_init[1])
                     self.tracker_id = 0
                     ctrl.SetSelection(self.tracker_id)
-                else:
-                    Publisher.sendMessage('Update status text in GUI',
-                                          label=_("Ready"))
 
+        Publisher.sendMessage('Update status text in GUI', label=_("Ready"))
         Publisher.sendMessage('Update tracker initializer',
                               nav_prop=(self.tracker_id, self.trk_init, self.ref_mode_id))
 
@@ -894,6 +889,10 @@ class ObjectRegistrationPanel(wx.Panel):
                                               data=(self.obj_fiducials, self.obj_orients, self.obj_ref_mode, self.obj_name))
                         Publisher.sendMessage('Update status text in GUI',
                                               label=_("Ready"))
+                        # Enable automatically Track object, Show coil and disable Vol. Camera
+                        self.checktrack.SetValue(True)
+                        Publisher.sendMessage('Update track object state', flag=True, obj_name=self.obj_name)
+                        Publisher.sendMessage('Change camera checkbox', status=False)
 
             except wx._core.PyAssertionError:  # TODO FIX: win64
                 pass
@@ -920,6 +919,9 @@ class ObjectRegistrationPanel(wx.Panel):
             Publisher.sendMessage('Update object registration',
                                   data=(self.obj_fiducials, self.obj_orients, self.obj_ref_mode, self.obj_name))
             Publisher.sendMessage('Update status text in GUI', label=_("Ready"))
+            self.checktrack.SetValue(True)
+            Publisher.sendMessage('Update track object state', flag=True, obj_name=self.obj_name)
+            Publisher.sendMessage('Change camera checkbox', status=False)
             wx.MessageBox(_("Object file successfully loaded"), _("Load"))
 
     def ShowSaveObjectDialog(self, evt):
@@ -967,8 +969,8 @@ class MarkersPanel(wx.Panel):
         self.tgt_flag = self.tgt_index = None
         self.nav_status = False
 
-        self.marker_colour = (0.0, 0.0, 1.)
-        self.marker_size = 4
+        self.marker_colour = (1.0, 1.0, 0.)
+        self.marker_size = 3
 
         # Change marker size
         spin_size = wx.SpinCtrl(self, -1, "", size=wx.Size(40, 23))
@@ -1062,9 +1064,7 @@ class MarkersPanel(wx.Panel):
             self.nav_status = True
 
     def OnMouseRightDown(self, evt):
-        self.OnListEditMarkerId(self.nav_status)
-
-    def OnListEditMarkerId(self, status):
+        # TODO: Enable the "Set as target" only when target is created with registered object
         menu_id = wx.Menu()
         edit_id = menu_id.Append(0, _('Edit ID'))
         menu_id.Bind(wx.EVT_MENU, self.OnMenuEditMarkerId, edit_id)
@@ -1074,7 +1074,7 @@ class MarkersPanel(wx.Panel):
         target_menu = menu_id.Append(1, _('Set as target'))
         menu_id.Bind(wx.EVT_MENU, self.OnMenuSetTarget, target_menu)
 
-        target_menu.Enable(status)
+        target_menu.Enable(True)
         self.PopupMenu(menu_id)
         menu_id.Destroy()
 
@@ -1093,7 +1093,7 @@ class MarkersPanel(wx.Panel):
             if id_label == 'TARGET':
                 id_label = ''
                 dlg.InvalidTargetID()
-        self.lc.SetStringItem(list_index, 4, id_label)
+        self.lc.SetItem(list_index, 4, id_label)
         # Add the new ID to exported list
         if len(self.list_coord[list_index]) > 8:
             self.list_coord[list_index][10] = str(id_label)
@@ -1107,7 +1107,7 @@ class MarkersPanel(wx.Panel):
         if self.tgt_flag:
             self.lc.SetItemBackgroundColour(self.tgt_index, 'white')
             Publisher.sendMessage('Set target transparency', status=False, index=self.tgt_index)
-            self.lc.SetStringItem(self.tgt_index, 4, '')
+            self.lc.SetItem(self.tgt_index, 4, '')
             # Add the new ID to exported list
             if len(self.list_coord[self.tgt_index]) > 8:
                 self.list_coord[self.tgt_index][10] = str('')
@@ -1197,7 +1197,7 @@ class MarkersPanel(wx.Panel):
             del self.list_coord[i]
             self.lc.DeleteItem(i)
             for n in range(0, self.lc.GetItemCount()):
-                self.lc.SetStringItem(n, 0, str(n+1))
+                self.lc.SetItem(n, 0, str(n+1))
             self.marker_ind -= 1
         Publisher.sendMessage('Remove marker', index=index)
 
@@ -1312,11 +1312,11 @@ class MarkersPanel(wx.Panel):
 
         # Add item to list control in panel
         num_items = self.lc.GetItemCount()
-        self.lc.InsertStringItem(num_items, str(num_items + 1))
-        self.lc.SetStringItem(num_items, 1, str(round(coord[0], 2)))
-        self.lc.SetStringItem(num_items, 2, str(round(coord[1], 2)))
-        self.lc.SetStringItem(num_items, 3, str(round(coord[2], 2)))
-        self.lc.SetStringItem(num_items, 4, str(marker_id))
+        self.lc.InsertItem(num_items, str(num_items + 1))
+        self.lc.SetItem(num_items, 1, str(round(coord[0], 2)))
+        self.lc.SetItem(num_items, 2, str(round(coord[1], 2)))
+        self.lc.SetItem(num_items, 3, str(round(coord[2], 2)))
+        self.lc.SetItem(num_items, 4, str(marker_id))
         self.lc.EnsureVisible(num_items)
 
     def GetSelectedItems(self):

@@ -157,6 +157,8 @@ class SurfaceManager():
     def __init__(self):
         self.actors_dict = {}
         self.last_surface_index = 0
+        self.affine = None
+        self.converttoInV = None
         self.__bind_events()
 
         self._default_parameters = {
@@ -205,6 +207,9 @@ class SurfaceManager():
         Publisher.subscribe(self.UpdateSurfaceInterpolation, 'Update Surface Interpolation')
 
         Publisher.subscribe(self.OnImportSurfaceFile, 'Import surface file')
+
+        Publisher.subscribe(self.UpdateAffineMatrix, 'Update affine matrix')
+        Publisher.subscribe(self.UpdateconverttoInVflag, 'Update converttoInV flag')
 
     def OnDuplicate(self, surface_indexes):
         proj = prj.Project()
@@ -303,14 +308,17 @@ class SurfaceManager():
         self.CreateSurfaceFromFile(filename)
 
     def CreateSurfaceFromFile(self, filename):
+        scalar = False
         if filename.lower().endswith('.stl'):
             reader = vtk.vtkSTLReader()
         elif filename.lower().endswith('.ply'):
             reader = vtk.vtkPLYReader()
+            scalar = True
         elif filename.lower().endswith('.obj'):
             reader = vtk.vtkOBJReader()
         elif filename.lower().endswith('.vtp'):
             reader = vtk.vtkXMLPolyDataReader()
+            scalar = True
         else:
             wx.MessageBox(_("File format not reconized by InVesalius"), _("Import surface error"))
             return
@@ -327,11 +335,38 @@ class SurfaceManager():
             wx.MessageBox(_("InVesalius was not able to import this surface"), _("Import surface error"))
         else:
             name = os.path.splitext(os.path.split(filename)[-1])[0]
-            self.CreateSurfaceFromPolydata(polydata, name=name)
+            self.CreateSurfaceFromPolydata(polydata, name=name, scalar=scalar)
+
+    def UpdateAffineMatrix(self, affine, status):
+        try:
+            if status:
+                from numpy import hstack
+                from numpy.linalg import inv
+                affine = inv(affine)
+                affine[1, 3] = -affine[1, 3]
+                self.affine = hstack(affine)
+            else:
+                self.affine = None
+        except:
+            Publisher.sendMessage('Update affine matrix',
+                                  affine=None, status=False)
+
+    def UpdateconverttoInVflag(self, converttoInV):
+        self.converttoInV = converttoInV
 
     def CreateSurfaceFromPolydata(self, polydata, overwrite=False,
                                   name=None, colour=None,
-                                  transparency=None, volume=None, area=None):
+                                  transparency=None, volume=None, area=None, scalar=False):
+        if self.converttoInV and self.affine is not None:
+            transform = vtk.vtkTransform()
+            transform.SetMatrix(self.affine)
+            transformFilter = vtk.vtkTransformPolyDataFilter()
+            transformFilter.SetTransform(transform)
+            transformFilter.SetInputData(polydata)
+            transformFilter.Update()
+            polydata = transformFilter.GetOutput()
+            self.converttoInV = None
+
         normals = vtk.vtkPolyDataNormals()
         normals.SetInputData(polydata)
         normals.SetFeatureAngle(80)
@@ -340,8 +375,11 @@ class SurfaceManager():
 
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(normals.GetOutput())
-        mapper.ScalarVisibilityOff()
-        mapper.ImmediateModeRenderingOn() # improve performance
+        if scalar:
+            mapper.ScalarVisibilityOn()
+        else:
+            mapper.ScalarVisibilityOff()
+        #  mapper.ImmediateModeRenderingOn() # improve performance
 
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
@@ -419,6 +457,9 @@ class SurfaceManager():
         # restarting the surface index
         Surface.general_index = -1
 
+        Publisher.sendMessage('Update affine matrix',
+                              affine=None, status=False)
+
     def OnSelectSurface(self, surface_index):
         #self.last_surface_index = surface_index
         # self.actors_dict.
@@ -449,7 +490,7 @@ class SurfaceManager():
             mapper = vtk.vtkPolyDataMapper()
             mapper.SetInputConnection(stripper.GetOutputPort())
             mapper.ScalarVisibilityOff()
-            mapper.ImmediateModeRenderingOn() # improve performance
+            #  mapper.ImmediateModeRenderingOn() # improve performance
 
             # Represent an object (geometry & properties) in the rendered scene
             actor = vtk.vtkActor()
@@ -477,6 +518,9 @@ class SurfaceManager():
 
     def _on_complete_surface_creation(self, args, overwrite, surface_name, colour, dialog):
         surface_filename, surface_measures = args
+        wx.CallAfter(self._show_surface, surface_filename, surface_measures, overwrite, surface_name, colour, dialog)
+
+    def _show_surface(self, surface_filename, surface_measures, overwrite, surface_name, colour, dialog):
         print(surface_filename, surface_measures)
         reader = vtk.vtkXMLPolyDataReader()
         reader.SetFileName(surface_filename)
@@ -488,7 +532,7 @@ class SurfaceManager():
         mapper.SetInputData(polydata)
         mapper.ScalarVisibilityOff()
         #  mapper.ReleaseDataFlagOn()
-        mapper.ImmediateModeRenderingOn() # improve performance
+        #  mapper.ImmediateModeRenderingOn() # improve performance
 
         # Represent an object (geometry & properties) in the rendered scene
         actor = vtk.vtkActor()
@@ -710,31 +754,18 @@ class SurfaceManager():
                 wx.Yield()
 
             if not sp.WasCancelled() or sp.running:
-                try:
-                    f = pool.apply_async(surface_process.join_process_surface,
-                                         args=(filenames, algorithm, smooth_iterations,
-                                               smooth_relaxation_factor,
-                                               decimate_reduction, keep_largest,
-                                               fill_holes, options, msg_queue),
-                                         callback=functools.partial(self._on_complete_surface_creation,
-                                                                    overwrite=overwrite,
-                                                                    surface_name=surface_name,
-                                                                    colour=colour,
-                                                                    dialog=sp),
-                                         error_callback=functools.partial(self._on_callback_error,
-                                                                          dialog=sp))
-                # python2
-                except TypeError:
-                    f = pool.apply_async(surface_process.join_process_surface,
-                                         args=(filenames, algorithm, smooth_iterations,
-                                               smooth_relaxation_factor,
-                                               decimate_reduction, keep_largest,
-                                               fill_holes, options, msg_queue),
-                                         callback=functools.partial(self._on_complete_surface_creation,
-                                                                    overwrite=overwrite,
-                                                                    surface_name=surface_name,
-                                                                    colour=colour,
-                                                                    dialog=sp))
+                f = pool.apply_async(surface_process.join_process_surface,
+                                     args=(filenames, algorithm, smooth_iterations,
+                                           smooth_relaxation_factor,
+                                           decimate_reduction, keep_largest,
+                                           fill_holes, options, msg_queue),
+                                     callback=functools.partial(self._on_complete_surface_creation,
+                                                                overwrite=overwrite,
+                                                                surface_name=surface_name,
+                                                                colour=colour,
+                                                                dialog=sp),
+                                     error_callback=functools.partial(self._on_callback_error,
+                                                                      dialog=sp))
 
                 while sp.running:
                     if sp.WasCancelled():
@@ -758,7 +789,10 @@ class SurfaceManager():
             del sp
 
         pool.close()
-        pool.terminate()
+        try:
+            pool.terminate()
+        except AssertionError:
+            pass
         del pool
         del manager
         del msg_queue

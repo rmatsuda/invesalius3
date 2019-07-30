@@ -29,12 +29,15 @@ from wx.lib.pubsub import pub as Publisher
 from multiprocessing import cpu_count
 
 from vtk.util import numpy_support
-from scipy import misc
+from imageio import imread
 import numpy
 import imghdr
 
 import invesalius.utils as utils
 import invesalius.data.converters as converters
+from invesalius import inv_paths
+
+
 #flag to control vtk error in read files
 no_error = True 
 vtk_error = False
@@ -283,7 +286,7 @@ def VtkErrorPNGWriter(obj, f):
 
 def ScipyRead(filepath):
     try:
-        r = misc.imread(filepath, flatten=True)
+        r = imread(filepath, flatten=True)
         dt = r.dtype 
         if  dt == "float" or dt == "float16"\
                           or dt == "float32" or dt == "float64":   
@@ -299,7 +302,7 @@ def ScipyRead(filepath):
 
 def VtkRead(filepath, t):
     if not const.VTK_WARNING:
-        log_path = os.path.join(const.USER_LOG_DIR, 'vtkoutput.txt')
+        log_path = os.path.join(inv_paths.USER_LOG_DIR, 'vtkoutput.txt')
         fow = vtk.vtkFileOutputWindow()
         fow.SetFileName(log_path.encode(const.FS_ENCODE))
         ow = vtk.vtkOutputWindow()

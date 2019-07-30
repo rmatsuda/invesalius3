@@ -34,6 +34,7 @@ from invesalius.gui.widgets.clut_raycasting import CLUTRaycastingWidget, \
         EVT_CLUT_CURVE_WL_CHANGE
 
 from invesalius.constants import ID_TO_BMP
+from invesalius import inv_paths
 
 import invesalius.session as ses
 import invesalius.constants as const
@@ -348,17 +349,17 @@ class VolumeToolPanel(wx.Panel):
         wx.Panel.__init__(self, parent)
 
         # VOLUME RAYCASTING BUTTON
-        BMP_RAYCASTING = wx.Bitmap(os.path.join(const.ICON_DIR, "volume_raycasting.png"),
+        BMP_RAYCASTING = wx.Bitmap(os.path.join(inv_paths.ICON_DIR, "volume_raycasting.png"),
                                     wx.BITMAP_TYPE_PNG)
 
-        BMP_SLICE_PLANE = wx.Bitmap(os.path.join(const.ICON_DIR, "slice_plane.png"),
+        BMP_SLICE_PLANE = wx.Bitmap(os.path.join(inv_paths.ICON_DIR, "slice_plane.png"),
                                     wx.BITMAP_TYPE_PNG)
 
 
-        BMP_3D_STEREO = wx.Bitmap(os.path.join(const.ICON_DIR, "3D_glasses.png"),
+        BMP_3D_STEREO = wx.Bitmap(os.path.join(inv_paths.ICON_DIR, "3D_glasses.png"),
                                     wx.BITMAP_TYPE_PNG)
 
-        BMP_TARGET = wx.Bitmap(os.path.join(const.ICON_DIR, "target.png"),
+        BMP_TARGET = wx.Bitmap(os.path.join(inv_paths.ICON_DIR, "target.png"),
                                     wx.BITMAP_TYPE_PNG)
 
 
@@ -487,9 +488,11 @@ class VolumeToolPanel(wx.Panel):
         if not self.button_target.IsPressed() and evt is not False:
             self.button_target._pressed = True
             Publisher.sendMessage('Target navigation mode', target_mode=self.button_target._pressed)
+            Publisher.sendMessage('Change camera checkbox', status=self.button_target._pressed)
         elif self.button_target.IsPressed() or evt is False:
             self.button_target._pressed = False
             Publisher.sendMessage('Target navigation mode', target_mode=self.button_target._pressed)
+            Publisher.sendMessage('Change camera checkbox', status=self.button_target._pressed)
 
     def OnSavePreset(self, evt):
         d = wx.TextEntryDialog(self, _("Preset name"))
@@ -506,7 +509,7 @@ class VolumeToolPanel(wx.Panel):
         for name in const.RAYCASTING_TYPES:
             id = wx.NewId()
             item = wx.MenuItem(menu, id, name, kind=wx.ITEM_RADIO)
-            menu.AppendItem(item)
+            menu.Append(item)
             if name == const.RAYCASTING_OFF_LABEL:
                 self.off_item = item
                 item.Check(1)
@@ -522,12 +525,12 @@ class VolumeToolPanel(wx.Panel):
                self.id_cutplane = id
            
            item = wx.MenuItem(submenu, id, name, kind=wx.ITEM_CHECK)
-           submenu.AppendItem(item)
+           submenu.Append(item)
            ID_TO_TOOL[id] = name
            ID_TO_TOOL_ITEM[id] = item
            TOOL_STATE[id] = False
         self.submenu_raycasting_tools = submenu
-        menu.AppendMenu(RAYCASTING_TOOLS, _("Tools"), submenu)
+        menu.Append(RAYCASTING_TOOLS, _("Tools"), submenu)
         menu.Enable(RAYCASTING_TOOLS, 0)
 
         self.menu_raycasting = menu
@@ -544,7 +547,7 @@ class VolumeToolPanel(wx.Panel):
             bmp =  wx.Bitmap(ID_TO_BMP[id][1], wx.BITMAP_TYPE_PNG)
             item = wx.MenuItem(menu, id, ID_TO_BMP[id][0])
             item.SetBitmap(bmp)
-            menu.AppendItem(item)
+            menu.Append(item)
         menu.Bind(wx.EVT_MENU, self.OnMenuView)
         self.menu_view = menu
 
@@ -558,7 +561,7 @@ class VolumeToolPanel(wx.Panel):
             item = wx.MenuItem(slice_plane_menu, new_id, value,
                                             kind = wx.ITEM_CHECK)
             ID_TO_ITEMSLICEMENU[new_id] = item
-            slice_plane_menu.AppendItem(item)
+            slice_plane_menu.Append(item)
 
         slice_plane_menu.Bind(wx.EVT_MENU, self.OnMenuPlaneSlice)
 
@@ -577,7 +580,7 @@ class VolumeToolPanel(wx.Panel):
 
             ID_TO_ITEM_3DSTEREO[new_id] = item
             ID_TO_STEREO_NAME[new_id] = value 
-            stereo_menu.AppendItem(item)
+            stereo_menu.Append(item)
 
         stereo_menu.Bind(wx.EVT_MENU, self.OnMenuStereo)
 

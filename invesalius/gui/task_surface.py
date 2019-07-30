@@ -38,6 +38,9 @@ import wx.lib.platebtn as pbtn
 import invesalius.project as prj
 import invesalius.utils as utl
 
+from invesalius import inv_paths
+from invesalius.gui.widgets.inv_spinctrl import InvSpinCtrl, InvFloatSpinCtrl
+
 #INTERPOLATION_MODE_LIST = ["Cubic", "Linear", "NearestNeighbor"]
 MIN_TRANSPARENCY = 0
 MAX_TRANSPARENCY = 100
@@ -80,7 +83,7 @@ class InnerTaskPanel(wx.Panel):
         self.SetAutoLayout(1)
 
 
-        BMP_ADD = wx.Bitmap(os.path.join(const.ICON_DIR, "object_add.png"), wx.BITMAP_TYPE_PNG)
+        BMP_ADD = wx.Bitmap(os.path.join(inv_paths.ICON_DIR, "object_add.png"), wx.BITMAP_TYPE_PNG)
         #BMP_ADD.SetWidth(25)
         #BMP_ADD.SetHeight(25)
 
@@ -328,17 +331,17 @@ class SurfaceTools(wx.Panel):
         link_seeds.Bind(hl.EVT_HYPERLINK_LEFT, self.OnLinkSeed)
 
         # Image(s) for buttons
-        img_largest = wx.Image(os.path.join(const.ICON_DIR, "connectivity_largest.png"),
+        img_largest = wx.Image(os.path.join(inv_paths.ICON_DIR, "connectivity_largest.png"),
                                wx.BITMAP_TYPE_PNG)
         img_largest.Rescale(25, 25)
         bmp_largest = img_largest.ConvertToBitmap()
 
-        img_split_all = wx.Image(os.path.join(const.ICON_DIR, "connectivity_split_all.png"),
+        img_split_all = wx.Image(os.path.join(inv_paths.ICON_DIR, "connectivity_split_all.png"),
                                  wx.BITMAP_TYPE_PNG)
         img_split_all.Rescale(25, 25)
         bmp_split_all = img_split_all.ConvertToBitmap()
 
-        img_seeds = wx.Image(os.path.join(const.ICON_DIR, "connectivity_manual.png"),
+        img_seeds = wx.Image(os.path.join(inv_paths.ICON_DIR, "connectivity_manual.png"),
                              wx.BITMAP_TYPE_PNG)
         img_seeds.Rescale(25, 25)
         bmp_seeds = img_seeds.ConvertToBitmap()
@@ -620,9 +623,7 @@ class QualityAdjustment(wx.Panel):
 
         text_decimate = wx.StaticText(self, -1, _("Decimate resolution:"))
 
-        spin_decimate = wx.SpinCtrl(self, -1, "", (30, 50))
-        spin_decimate.SetRange(1,100)
-        spin_decimate.SetValue(30)
+        spin_decimate = InvSpinCtrl(self, -1, value=30, min_value=1, max_value=100, size=(30, 50))
         #spin_decimate.Bind(wx.EVT_TEXT, self.OnDecimate)
 
         # LINE 3
@@ -630,9 +631,7 @@ class QualityAdjustment(wx.Panel):
 
         text_smooth = wx.StaticText(self, -1, _("Smooth iterations:"))
 
-        spin_smooth = wx.SpinCtrl(self, -1, "", (30, 50))
-        spin_smooth.SetRange(1,100)
-        spin_smooth.SetValue(0)
+        spin_smooth = InvSpinCtrl(self, -1, value=0, min_value=1, max_values=100, size=(30, 50))
 
         # MIXED LINE 2 AND 3
         flag_link = wx.EXPAND|wx.GROW|wx.RIGHT|wx.LEFT

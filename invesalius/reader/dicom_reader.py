@@ -24,7 +24,6 @@ import sys
 from multiprocessing import cpu_count
 
 import vtk
-import vtkgdcm
 import gdcm
 from wx.lib.pubsub import pub as Publisher
 
@@ -35,6 +34,7 @@ import invesalius.session as session
 import glob
 import invesalius.utils as utils
 
+from invesalius import inv_paths
 from invesalius.data import imagedata_utils
 
 import plistlib
@@ -201,14 +201,11 @@ class LoadDicom:
                 level = None
                 window = None
 
-            if _has_win32api:
-                thumbnail_path = imagedata_utils.create_dicom_thumbnails(win32api.GetShortPathName(self.filepath), window, level)
-            else:
-                thumbnail_path = imagedata_utils.create_dicom_thumbnails(self.filepath, window, level)
+            img = reader.GetImage()
+            thumbnail_path = imagedata_utils.create_dicom_thumbnails(img, window, level)
 
             #------ Verify the orientation --------------------------------
 
-            img = reader.GetImage()
             direc_cosines = img.GetDirectionCosines()
             orientation = gdcm.Orientation()
             try:
@@ -334,7 +331,7 @@ class ProgressDicomReader:
     def GetDicomGroups(self, path, recursive):
 
         if not const.VTK_WARNING:
-            log_path = utils.encode(os.path.join(const.USER_LOG_DIR, 'vtkoutput.txt'), const.FS_ENCODE)
+            log_path = utils.encode(str(inv_paths.USER_LOG_DIR.joinpath('vtkoutput.txt')), const.FS_ENCODE)
             fow = vtk.vtkFileOutputWindow()
             fow.SetFileName(log_path)
             ow = vtk.vtkOutputWindow()
