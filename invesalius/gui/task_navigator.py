@@ -547,9 +547,11 @@ class NeuronavigationPanel(wx.Panel):
     def OnTrackerFiducials(self, evt):
         btn_id = list(const.BTNS_TRK[evt.GetId()].keys())[0]
         coord = None
-
+        mean_coord_raw = []
         if self.trk_init and self.tracker_id:
-            coord_raw = dco.GetCoordinates(self.trk_init, self.tracker_id, self.ref_mode_id)
+            for _ in range(5):
+                mean_coord_raw.append(dco.GetCoordinates(self.trk_init, self.tracker_id, self.ref_mode_id))
+            coord_raw = np.mean(mean_coord_raw, axis=0)
             if self.ref_mode_id:
                 coord = dco.dynamic_reference_m(coord_raw[0, :], coord_raw[1, :])
             else:
