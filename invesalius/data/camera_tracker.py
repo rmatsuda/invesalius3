@@ -58,7 +58,7 @@ class camera():
         self.parameters.cornerRefinementWinSize = 5
 
         markerLength = 0.05  #unit is meters.
-        markerSeparation = 0.008  #unit is meters.
+        markerSeparation = 0.005  #unit is meters.
         self.board_probe = aruco.GridBoard_create(2, 1, markerLength, markerSeparation, self.aruco_dict, firstMarker = 0)
         self.board_coil = aruco.GridBoard_create(2, 1, markerLength, markerSeparation, self.aruco_dict, firstMarker = 2)
 
@@ -66,17 +66,17 @@ class camera():
             state_num=2,
             measure_num=1,
             cov_process=0.1,
-            cov_measure=0.000001) for _ in range(6)]
+            cov_measure=1) for _ in range(6)]
         self.probe_stabilizers = [stabilizer.Stabilizer_probe(
             state_num=2,
             measure_num=1,
             cov_process=0.1,
-            cov_measure=0.000001) for _ in range(6)]
+            cov_measure=1) for _ in range(6)]
         self.obj_stabilizers = [stabilizer.Stabilizer_obj(
             state_num=2,
             measure_num=1,
             cov_process=0.1,
-            cov_measure=0.000001) for _ in range(6)]
+            cov_measure=1) for _ in range(6)]
 
 
     def Initialize(self):
@@ -111,7 +111,7 @@ class camera():
         aruco.refineDetectedMarkers(gray, self.board_coil, corners, ids, rejectedImgPoints)
 
         #translate_tooltip = np.array([0, 0.21, 0])
-        translate_tooltip = np.array([0.055, 0.24, -0.01])
+        translate_tooltip = np.array([0.059, 0.241, -0.005])
 
         if len(face_rects) > 0:
             shape = self.predictor(frame, face_rects[0])
@@ -126,55 +126,54 @@ class camera():
             ref_id = 0
 
         if np.all(ids != None):
-            for i in range(len(ids)):
-                if ids[i] == 0 or ids[i] == 1:
-                    retval, rvec, tvec = aruco.estimatePoseBoard(corners, ids, self.board_probe, self.cam_matrix,
-                                                                 self.dist_coeffs)
-                    tvec = np.vstack(tvec)
-                    # calc for probe board
-                    rotation_mat, _ = cv2.Rodrigues(rvec)
-                    pose_mat = cv2.hconcat((rotation_mat, tvec))
-                    _, _, _, _, _, _, euler_angle = cv2.decomposeProjectionMatrix(pose_mat)
+            if np.any(ids == 0) or np.any(ids == 1):
+                retval, rvec, tvec = aruco.estimatePoseBoard(corners, ids, self.board_probe, self.cam_matrix,
+                                                             self.dist_coeffs)
+                tvec = np.vstack(tvec)
+                # calc for probe board
+                rotation_mat, _ = cv2.Rodrigues(rvec)
+                pose_mat = cv2.hconcat((rotation_mat, tvec))
+                _, _, _, _, _, _, euler_angle = cv2.decomposeProjectionMatrix(pose_mat)
 
-                    # Stabilize the pose.
-                    pose = (euler_angle, tvec)
-                    stabile_pose = []
-                    pose_np = np.array(pose).flatten()
-                    for value, ps_stb in zip(pose_np, self.probe_stabilizers):
-                        ps_stb.update([value])
-                        stabile_pose.append(ps_stb.state[0])
-                    stabile_pose = np.reshape(stabile_pose, (-1, 3))
-                    euler_angle, tvec = stabile_pose
-                    euler_angle = np.reshape(euler_angle, (3, 1))
+                # Stabilize the pose.
+                pose = (euler_angle, tvec)
+                stabile_pose = []
+                pose_np = np.array(pose).flatten()
+                for value, ps_stb in zip(pose_np, self.probe_stabilizers):
+                    ps_stb.update([value])
+                    stabile_pose.append(ps_stb.state[0])
+                stabile_pose = np.reshape(stabile_pose, (-1, 3))
+                euler_angle, tvec = stabile_pose
+                euler_angle = np.reshape(euler_angle, (3, 1))
 
-                    angles = np.array([euler_angle[2], euler_angle[1], euler_angle[0]])
-                    tool_tip_position = np.dot(rotation_mat, np.transpose(translate_tooltip)) + tvec
-                    self.probe = np.hstack([1000*tool_tip_position, angles[:, 0]])
+                angles = np.array([euler_angle[2], euler_angle[1], euler_angle[0]])
+                tool_tip_position = np.dot(rotation_mat, np.transpose(translate_tooltip)) + tvec
+                self.probe = np.hstack([1000*tool_tip_position, angles[:, 0]])
 
 
-                elif ids[i] == 2 or ids[i] == 3:
-                    retval, rvec, tvec = aruco.estimatePoseBoard(corners, ids, self.board_coil, self.cam_matrix,
-                                                                 self.dist_coeffs)
-                    tvec = np.vstack(tvec)
-                    # calc for coil board
-                    rotation_mat, _ = cv2.Rodrigues(rvec)
-                    pose_mat = cv2.hconcat((rotation_mat, tvec))
-                    _, _, _, _, _, _, euler_angle = cv2.decomposeProjectionMatrix(pose_mat)
+            elif np.any(ids == 2) or np.any(ids == 3):
+                retval, rvec, tvec = aruco.estimatePoseBoard(corners, ids, self.board_coil, self.cam_matrix,
+                                                             self.dist_coeffs)
+                tvec = np.vstack(tvec)
+                # calc for coil board
+                rotation_mat, _ = cv2.Rodrigues(rvec)
+                pose_mat = cv2.hconcat((rotation_mat, tvec))
+                _, _, _, _, _, _, euler_angle = cv2.decomposeProjectionMatrix(pose_mat)
 
-                    # Stabilize the pose.
-                    pose = (euler_angle, tvec)
-                    stabile_pose = []
-                    pose_np = np.array(pose).flatten()
-                    for value, ps_stb in zip(pose_np, self.probe_stabilizers):
-                        ps_stb.update([value])
-                        stabile_pose.append(ps_stb.state[0])
-                    stabile_pose = np.reshape(stabile_pose, (-1, 3))
-                    euler_angle, tvec = stabile_pose
-                    euler_angle = np.reshape(euler_angle, (3, 1))
+                # Stabilize the pose.
+                pose = (euler_angle, tvec)
+                stabile_pose = []
+                pose_np = np.array(pose).flatten()
+                for value, ps_stb in zip(pose_np, self.obj_stabilizers):
+                    ps_stb.update([value])
+                    stabile_pose.append(ps_stb.state[0])
+                stabile_pose = np.reshape(stabile_pose, (-1, 3))
+                euler_angle, tvec = stabile_pose
+                euler_angle = np.reshape(euler_angle, (3, 1))
 
-                    angles = np.array([euler_angle[2], euler_angle[1], euler_angle[0]])
+                angles = np.array([euler_angle[2], euler_angle[1], euler_angle[0]])
 
-                    self.coil = np.hstack([1000*tvec, angles[:, 0]])
+                self.coil = np.hstack([1000*tvec, angles[:, 0]])
 
             probe_id = 1
         else:

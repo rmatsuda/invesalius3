@@ -100,6 +100,7 @@ def CameraTracker(tracker_id):
         print('Connect to camera tracking device.')
 
     except:
+        trck_init = None
         print('Could not connect to default tracker.')
 
     # return tracker initialization variable and type of connection
