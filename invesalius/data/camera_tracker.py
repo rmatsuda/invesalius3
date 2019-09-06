@@ -38,27 +38,18 @@ class camera():
                                  [0.000000, -3.116408, 6.097667],
                                  [0.000000, -7.415691, 4.070434]])
 
-        self.reprojectsrc = np.float32([[10.0, 10.0, 10.0],
-                                   [10.0, 10.0, -10.0],
-                                   [10.0, -10.0, -10.0],
-                                   [10.0, -10.0, 10.0],
-                                   [-10.0, 10.0, 10.0],
-                                   [-10.0, 10.0, -10.0],
-                                   [-10.0, -10.0, -10.0],
-                                   [-10.0, -10.0, 10.0]])
-
-        self.line_pairs = [[0, 1], [1, 2], [2, 3], [3, 0],
-                      [4, 5], [5, 6], [6, 7], [7, 4],
-                      [0, 4], [1, 5], [2, 6], [3, 7]]
-
         #Aruco parameters:
         self.aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_50)
         self.parameters = aruco.DetectorParameters_create()
         self.parameters.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
         self.parameters.cornerRefinementWinSize = 5
 
+        #translate_tooltip = np.array([0, 0.21, 0])
+        self.translate_tooltip = np.array([0.059, 0.241, -0.005])
+
         markerLength = 0.05  #unit is meters.
         markerSeparation = 0.005  #unit is meters.
+        #TODO: improve firstMarker numbers
         self.board_probe = aruco.GridBoard_create(2, 1, markerLength, markerSeparation, self.aruco_dict, firstMarker = 0)
         self.board_coil = aruco.GridBoard_create(2, 1, markerLength, markerSeparation, self.aruco_dict, firstMarker = 2)
 
@@ -110,14 +101,11 @@ class camera():
         aruco.refineDetectedMarkers(gray, self.board_probe, corners, ids, rejectedImgPoints)
         aruco.refineDetectedMarkers(gray, self.board_coil, corners, ids, rejectedImgPoints)
 
-        #translate_tooltip = np.array([0, 0.21, 0])
-        translate_tooltip = np.array([0.059, 0.241, -0.005])
-
         if len(face_rects) > 0:
             shape = self.predictor(frame, face_rects[0])
             shape = face_utils.shape_to_np(shape)
 
-            _, euler_angle, translation_vec = self.get_head_pose(shape)
+            euler_angle, translation_vec = self.get_head_pose(shape)
             angles = np.array([euler_angle[2], euler_angle[1], euler_angle[0]])
             self.ref = np.hstack([-10*translation_vec[:, 0], angles[:, 0]])
 
@@ -147,7 +135,7 @@ class camera():
                 euler_angle = np.reshape(euler_angle, (3, 1))
 
                 angles = np.array([euler_angle[2], euler_angle[1], euler_angle[0]])
-                tool_tip_position = np.dot(rotation_mat, np.transpose(translate_tooltip)) + tvec
+                tool_tip_position = np.dot(rotation_mat, np.transpose(self.translate_tooltip)) + tvec
                 self.probe = np.hstack([1000*tool_tip_position, angles[:, 0]])
 
 
@@ -194,10 +182,10 @@ class camera():
 
         _, rotation_vec, translation_vec = cv2.solvePnP(self.object_pts, image_pts, self.cam_matrix, self.dist_coeffs)
 
-        reprojectdst, _ = cv2.projectPoints(self.reprojectsrc, rotation_vec, translation_vec,self.cam_matrix,
-                                            self.dist_coeffs)
-
-        reprojectdst = tuple(map(tuple, reprojectdst.reshape(8, 2)))
+        # reprojectdst, _ = cv2.projectPoints(self.reprojectsrc, rotation_vec, translation_vec,self.cam_matrix,
+        #                                     self.dist_coeffs)
+        #
+        # reprojectdst = tuple(map(tuple, reprojectdst.reshape(8, 2)))
 
         # calc euler angle
         rotation_mat, _ = cv2.Rodrigues(rotation_vec)
@@ -216,6 +204,6 @@ class camera():
         euler_angle = np.reshape(euler_angle, (3, 1))
         translation_vec = np.reshape(translation_vec, (3, 1))
 
-        return reprojectdst, euler_angle, translation_vec
+        return euler_angle, translation_vec
 
 
