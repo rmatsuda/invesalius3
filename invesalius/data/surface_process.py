@@ -13,7 +13,7 @@ import vtk
 
 import invesalius.i18n as i18n
 import invesalius.data.converters as converters
-from invesalius.data import cy_mesh
+from invesalius_cy import cy_mesh
 
 import weakref
 from scipy import ndimage
@@ -131,8 +131,8 @@ def create_surface_piece(filename, shape, dtype, mask_filename, mask_shape,
             image = converters.to_vtk(a_image, spacing, roi.start, "AXIAL", padding=padding)
         del a_image
 
-    if imagedata_resolution:
-        image = ResampleImage3D(image, imagedata_resolution)
+    #  if imagedata_resolution:
+        #  image = ResampleImage3D(image, imagedata_resolution)
 
     flip = vtk.vtkImageFlip()
     flip.SetInputData(image)

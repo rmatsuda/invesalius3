@@ -312,6 +312,8 @@ def parse_comand_line():
     parser.add_option("--import-all",
                       action="store")
 
+    parser.add_option("--import-folder", action="store", dest="import_folder")
+
     parser.add_option("-s", "--save",
                       help="Save the project after an import.")
 
@@ -354,6 +356,13 @@ def use_cmd_optargs(options, args):
         check_for_export(options)
 
         return True
+    elif options.import_folder:
+        Publisher.sendMessage('Import folder', folder=options.import_folder)
+        if options.save:
+            Publisher.sendMessage('Save project', filepath=os.path.abspath(options.save))
+            exit(0)
+        check_for_export(options)
+
     elif options.import_all:
         import invesalius.reader.dicom_reader as dcm
         for patient in dcm.GetDicomGroups(options.import_all):
@@ -507,12 +516,6 @@ if __name__ == '__main__':
         # Set system standard error output to file
         path = inv_paths.USER_LOG_DIR.join("stderr.log")
         sys.stderr = open(path, "w")
-
-    # Add current directory to PYTHONPATH, so other classes can
-    # import modules as they were on root invesalius folder
-    sys.path.insert(0, '.')
-    sys.path.append(".")
-
 
     # Init application
     main()

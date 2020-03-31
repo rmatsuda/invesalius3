@@ -303,8 +303,8 @@ class Viewer(wx.Panel):
             self.style.CleanUp()
 
         del self.style
-        
-        style = styles.get_style(state)(self)
+
+        style = styles.Styles.get_style(state)(self)
 
         setup = getattr(style, 'SetUp', None)
         if setup:
@@ -1331,10 +1331,12 @@ class Viewer(wx.Panel):
         if (evt.GetKeyCode() == wx.WXK_UP and pos > min):
             self.OnScrollForward()
             self.OnScrollBar()
+            skip = False
 
         elif (evt.GetKeyCode() == wx.WXK_DOWN and pos < max):
             self.OnScrollBackward()
             self.OnScrollBar()
+            skip = False
 
         elif (evt.GetKeyCode() == wx.WXK_NUMPAD_ADD):
             actual_value = self.mip_ctrls.mip_size_spin.GetValue()
@@ -1342,6 +1344,7 @@ class Viewer(wx.Panel):
             if self.mip_ctrls.mip_size_spin.GetValue() != actual_value:
                 self.number_slices = self.mip_ctrls.mip_size_spin.GetValue()
                 self.ReloadActualSlice()
+            skip = False
 
         elif (evt.GetKeyCode() == wx.WXK_NUMPAD_SUBTRACT):
             actual_value = self.mip_ctrls.mip_size_spin.GetValue()
@@ -1349,6 +1352,7 @@ class Viewer(wx.Panel):
             if self.mip_ctrls.mip_size_spin.GetValue() != actual_value:
                 self.number_slices = self.mip_ctrls.mip_size_spin.GetValue()
                 self.ReloadActualSlice()
+            skip = False
 
         elif evt.GetKeyCode() in projections:
             self.slice_.SetTypeProjection(projections[evt.GetKeyCode()])
@@ -1427,6 +1431,11 @@ class Viewer(wx.Panel):
         self.overwrite_mask = flag
 
     def set_slice_number(self, index):
+        max_slice_number = sl.Slice().GetNumberOfSlices(self.orientation)
+        if index < 0:
+            index = 0
+        if index >= max_slice_number:
+            index = max_slice_number - 1
         inverted = self.mip_ctrls.inverted.GetValue()
         border_size = self.mip_ctrls.border_spin.GetValue()
         image = self.slice_.GetSlices(self.orientation, index,
@@ -1530,3 +1539,39 @@ class Viewer(wx.Panel):
                 renderer.RemoveActor(actor)
                 # and remove the actor from the actor's list
                 self.actors_by_slice_number[slice_number].remove(actor)
+
+    def get_actual_mask(self):
+        # Returns actual mask. Returns None if there is not a mask or no mask
+        # visible.
+        mask = self.slice_.current_mask
+        return mask
+
+    def get_slice(self):
+        return self.slice_
+
+    def discard_slice_cache(self, all_orientations=False, vtk_cache=True):
+        if all_orientations:
+            for orientation in self.slice_.buffer_slices:
+                buffer_ = self.slice_.buffer_slices[orientation]
+                buffer_.discard_image()
+                if vtk_cache:
+                    buffer_.discard_vtk_image()
+        else:
+            buffer_ = self.slice_.buffer_slices[self.orientation]
+            buffer_.discard_image()
+            if vtk_cache:
+                buffer_.discard_vtk_image()
+
+    def discard_mask_cache(self, all_orientations=False, vtk_cache=True):
+        if all_orientations:
+            for orientation in self.slice_.buffer_slices:
+                buffer_ = self.slice_.buffer_slices[orientation]
+                buffer_.discard_mask()
+                if vtk_cache:
+                    buffer_.discard_vtk_mask()
+
+        else:
+            buffer_ = self.slice_.buffer_slices[self.orientation]
+            buffer_.discard_mask()
+            if vtk_cache:
+                buffer_.discard_vtk_mask()

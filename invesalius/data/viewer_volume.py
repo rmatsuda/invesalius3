@@ -185,6 +185,7 @@ class Viewer(wx.Panel):
         self.aim_actor = None
         self.dummy_coil_actor = None
         self.target_mode = False
+        self.polydata = None
         self.anglethreshold = const.COIL_ANGLES_THRESHOLD
         self.distthreshold = const.COIL_COORD_THRESHOLD
 
@@ -929,6 +930,25 @@ class Viewer(wx.Panel):
                 for col in range(0, 4):
                     m_img_vtk.SetElement(row, col, m_img[row, col])
 
+        self.m_img_vtk = m_img_vtk
+
+        filename = os.path.join(inv_paths.OBJ_DIR, "aim.stl")
+
+        reader = vtk.vtkSTLReader()
+        reader.SetFileName(filename)
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(reader.GetOutputPort())
+
+        # Transform the polydata
+        transform = vtk.vtkTransform()
+        transform.SetMatrix(m_img_vtk)
+        transformPD = vtk.vtkTransformPolyDataFilter()
+        transformPD.SetTransform(transform)
+        transformPD.SetInputConnection(reader.GetOutputPort())
+        transformPD.Update()
+        # mapper transform
+        mapper.SetInputConnection(transformPD.GetOutputPort())
+
         aim_actor = vtk.vtkActor()
         aim_actor.SetMapper(mapper)
         aim_actor.GetProperty().SetDiffuseColor(vtk_colors.GetColor3d('Yellow'))
@@ -940,7 +960,11 @@ class Viewer(wx.Panel):
         self.ren.AddActor(aim_actor)
 
         #obj_polydata = self.CreateObjectPolyData(os.path.join(inv_paths.OBJ_DIR, "magstim_fig8_coil_no_handle.stl"))
-        obj_polydata = self.CreateObjectPolyData(os.path.join(inv_paths.OBJ_DIR, "magstim_fig8_coil.stl"))
+        #obj_polydata = self.CreateObjectPolyData(os.path.join(inv_paths.OBJ_DIR, "magstim_fig8_coil.stl"))
+        if self.polydata:
+            obj_polydata = self.polydata
+        else:
+            obj_polydata = self.CreateObjectPolyData(os.path.join(inv_paths.OBJ_DIR, "magstim_fig8_coil_no_handle.stl"))
 
         transform = vtk.vtkTransform()
         #TODO: fix rotateZ for image target creation (MRI and CT are inverted). User should set the orientation angle
@@ -1056,6 +1080,46 @@ class Viewer(wx.Panel):
         actor_arrow.SetMapper(mapper)
 
         return actor_arrow
+
+    def CenterOfMass(self):
+        proj = prj.Project()
+        surface = proj.surface_dict[0].polydata
+        barycenter = [0.0, 0.0, 0.0]
+        n = surface.GetNumberOfPoints()
+        for i in range(n):
+            point = surface.GetPoint(i)
+            barycenter[0] += point[0]
+            barycenter[1] += point[1]
+            barycenter[2] += point[2]
+        barycenter[0] /= n
+        barycenter[1] /= n
+        barycenter[2] /= n
+
+        return barycenter
+
+    def Plane(self, x0, pTarget):
+        v3 = np.array(pTarget) - x0  # normal to the plane
+        v3 = v3 / np.linalg.norm(v3)  # unit vector
+
+        d = np.dot(v3, x0)
+        # prevents division by zero.
+        if v3[0] == 0.0:
+            v3[0] = 1e-09
+
+        x1 = np.array([(d - v3[1] - v3[2]) / v3[0], 1, 1])
+        v2 = x1 - x0
+        v2 = v2 / np.linalg.norm(v2)  # unit vector
+        v1 = np.cross(v3, v2)
+        v1 = v1 / np.linalg.norm(v1)  # unit vector
+        x2 = x0 + v1
+        # calculates the matrix for the change of coordinate systems (from canonical to the plane's).
+        # remember that, in np.dot(M,p), even though p is a line vector (e.g.,np.array([1,2,3])), it is treated as a column for the dot multiplication.
+        M_plane_inv = np.array([[v1[0], v2[0], v3[0], x0[0]],
+                                [v1[1], v2[1], v3[1], x0[1]],
+                                [v1[2], v2[2], v3[2], x0[2]],
+                                [0, 0, 0, 1]])
+
+        return v3, M_plane_inv
 
     def SetCameraTarget(self):
         cam_focus = self.target_coord[0:3]
@@ -1241,9 +1305,10 @@ class Viewer(wx.Panel):
 
         self.Refresh()
 
-    def UpdateTrackObjectState(self, evt=None, flag=None, obj_name=None):
+    def UpdateTrackObjectState(self, evt=None, flag=None, obj_name=None, polydata=None):
         if flag:
             self.obj_name = obj_name
+            self.polydata = polydata
             if not self.obj_actor:
                 self.AddObjectActor(self.obj_name)
         else:
