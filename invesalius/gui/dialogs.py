@@ -23,6 +23,7 @@ import os
 import random
 import sys
 import time
+from functools import partial
 
 from concurrent import futures
 
@@ -46,7 +47,7 @@ from vtk.wx.wxVTKRenderWindowInteractor import wxVTKRenderWindowInteractor
 from wx.lib import masked
 from wx.lib.agw import floatspin
 from wx.lib.wordwrap import wordwrap
-from wx.lib.pubsub import pub as Publisher
+from pubsub import pub as Publisher
 
 try:
     from wx.adv import AboutDialogInfo, AboutBox
@@ -58,10 +59,12 @@ import invesalius.data.coordinates as dco
 import invesalius.gui.widgets.gradient as grad
 import invesalius.session as ses
 import invesalius.utils as utils
+import invesalius.data.bases as bases
 from invesalius.gui.widgets.inv_spinctrl import InvSpinCtrl, InvFloatSpinCtrl
 from invesalius.gui.widgets import clut_imagedata
 from invesalius.gui.widgets.clut_imagedata import CLUTImageDataWidget, EVT_CLUT_NODE_CHANGED
 import numpy as np
+from numpy.core.umath_tests import inner1d
 
 from invesalius import inv_paths
 
@@ -242,9 +245,7 @@ WILDCARD_OPEN = "InVesalius 3 project (*.inv3)|*.inv3|" \
 WILDCARD_ANALYZE = "Analyze 7.5 (*.hdr)|*.hdr|" \
                    "All files (*.*)|*.*"
 
-WILDCARD_NIFTI = "NIfTI 1 (*.nii)|*.nii|" \
-                 "Compressed NIfTI (*.nii.gz)|*.nii.gz|" \
-                 "HDR NIfTI (*.hdr)|*.hdr|" \
+WILDCARD_NIFTI = "NIfTI 1 (*.nii;*.nii.gz;*.hdr)|*.nii;*.nii.gz;*.hdr|" \
                  "All files (*.*)|*.*"
 #".[jJ][pP][gG]"
 WILDCARD_PARREC = "PAR/REC (*.par)|*.par|" \
@@ -389,6 +390,15 @@ def ShowImportOtherFilesDialog(id_type):
     if id_type == const.ID_NIFTI_IMPORT:
         dlg.SetMessage(_("Import NIFTi 1 file"))
         dlg.SetWildcard(WILDCARD_NIFTI)
+    elif id_type == const.ID_TREKKER_MASK:
+        dlg.SetMessage(_("Import Trekker mask"))
+        dlg.SetWildcard(WILDCARD_NIFTI)
+    elif id_type == const.ID_TREKKER_IMG:
+        dlg.SetMessage(_("Import Trekker anatomical image"))
+        dlg.SetWildcard(WILDCARD_NIFTI)
+    elif id_type == const.ID_TREKKER_FOD:
+        dlg.SetMessage(_("Import Trekker FOD"))
+        dlg.SetWildcard(WILDCARD_NIFTI)
     elif id_type == const.ID_PARREC_IMPORT:
         dlg.SetMessage(_("Import PAR/REC file"))
         dlg.SetWildcard(WILDCARD_PARREC)
@@ -510,79 +520,11 @@ def ShowSaveAsProjectDialog(default_filename=None):
     return filename, wildcard == INV_COMPRESSED
 
 
-# Dialog for neuronavigation markers
-def ShowSaveMarkersDialog(default_filename=None):
-    current_dir = os.path.abspath(".")
-    dlg = wx.FileDialog(None,
-                        _("Save markers as..."),  # title
-                        "",  # last used directory
-                        default_filename,
-                        _("Markers files (*.mks)|*.mks"),
-                        wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
-    # dlg.SetFilterIndex(0) # default is VTI
+def ShowLoadSaveDialog(message=_(u"Load File"), current_dir=os.path.abspath("."), style=wx.FD_OPEN | wx.FD_CHANGE_DIR,
+                       wildcard=_("Registration files (*.obr)|*.obr"), default_filename="", save_ext=None):
 
-    filename = None
-    try:
-        if dlg.ShowModal() == wx.ID_OK:
-            filename = dlg.GetPath()
-            ok = 1
-        else:
-            ok = 0
-    except(wx._core.PyAssertionError):  # TODO: fix win64
-        filename = dlg.GetPath()
-        ok = 1
-
-    if (ok):
-        extension = "mks"
-        if sys.platform != 'win32':
-            if filename.split(".")[-1] != extension:
-                filename = filename + "." + extension
-
-    os.chdir(current_dir)
-    return filename
-
-def ShowSaveCoordsDialog(default_filename=None):
-    current_dir = os.path.abspath(".")
-    dlg = wx.FileDialog(None,
-                        _("Save coords as..."),  # title
-                        "",  # last used directory
-                        default_filename,
-                        _("Coordinates files (*.csv)|*.csv"),
-                        wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
-    # dlg.SetFilterIndex(0) # default is VTI
-
-    filename = None
-    try:
-        if dlg.ShowModal() == wx.ID_OK:
-            filename = dlg.GetPath()
-            ok = 1
-        else:
-            ok = 0
-    except(wx._core.PyAssertionError):  # TODO: fix win64
-        filename = dlg.GetPath()
-        ok = 1
-
-    if (ok):
-        extension = "csv"
-        if sys.platform != 'win32':
-            if filename.split(".")[-1] != extension:
-                filename = filename + "." + extension
-
-    os.chdir(current_dir)
-    return filename
-
-
-def ShowLoadMarkersDialog():
-    current_dir = os.path.abspath(".")
-
-    dlg = wx.FileDialog(None, message=_("Load markers"),
-                        defaultDir="",
-                        defaultFile="",
-                        wildcard=_("Markers files (*.mks)|*.mks"),
-                        style=wx.FD_OPEN|wx.FD_CHANGE_DIR)
-
-    # inv3 filter is default
-    dlg.SetFilterIndex(0)
+    dlg = wx.FileDialog(None, message=message, defaultDir="", defaultFile=default_filename,
+                        wildcard=wildcard, style=style)
 
     # Show the dialog and retrieve the user response. If it is the OK response,
     # process the data.
@@ -591,73 +533,25 @@ def ShowLoadMarkersDialog():
         if dlg.ShowModal() == wx.ID_OK:
             # This returns a Python list of files that were selected.
             filepath = dlg.GetPath()
-    except(wx._core.PyAssertionError):  # FIX: win64
-        filepath = dlg.GetPath()
-
-    # Destroy the dialog. Don't do this until you are done with it!
-    # BAD things can happen otherwise!
-    dlg.Destroy()
-    os.chdir(current_dir)
-    return filepath
-
-
-def ShowSaveRegistrationDialog(default_filename=None):
-    current_dir = os.path.abspath(".")
-    dlg = wx.FileDialog(None,
-                        _("Save object registration as..."),  # title
-                        "",  # last used directory
-                        default_filename,
-                        _("Registration files (*.obr)|*.obr"),
-                        wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
-    # dlg.SetFilterIndex(0) # default is VTI
-
-    filename = None
-    try:
-        if dlg.ShowModal() == wx.ID_OK:
-            filename = dlg.GetPath()
-            ok = 1
+            ok_press = 1
         else:
-            ok = 0
-    except(wx._core.PyAssertionError):  # TODO: fix win64
-        filename = dlg.GetPath()
-        ok = 1
-
-    if (ok):
-        extension = "obr"
-        if sys.platform != 'win32':
-            if filename.split(".")[-1] != extension:
-                filename = filename + "." + extension
-
-    os.chdir(current_dir)
-    return filename
-
-
-def ShowLoadRegistrationDialog():
-    current_dir = os.path.abspath(".")
-
-    dlg = wx.FileDialog(None, message=_("Load object registration"),
-                        defaultDir="",
-                        defaultFile="",
-                        wildcard=_("Registration files (*.obr)|*.obr"),
-                        style=wx.FD_OPEN|wx.FD_CHANGE_DIR)
-
-    # inv3 filter is default
-    dlg.SetFilterIndex(0)
-
-    # Show the dialog and retrieve the user response. If it is the OK response,
-    # process the data.
-    filepath = None
-    try:
-        if dlg.ShowModal() == wx.ID_OK:
-            # This returns a Python list of files that were selected.
-            filepath = dlg.GetPath()
+            ok_press = 0
     except(wx._core.PyAssertionError):  # FIX: win64
         filepath = dlg.GetPath()
+        ok_press = 1
+
+    # fix the extension if set different than expected
+    if save_ext and ok_press:
+        extension = save_ext
+        if sys.platform != 'win32':
+            if filepath.split(".")[-1] != extension:
+                filepath = filepath + "." + extension
 
     # Destroy the dialog. Don't do this until you are done with it!
     # BAD things can happen otherwise!
     dlg.Destroy()
     os.chdir(current_dir)
+
     return filepath
 
 
@@ -753,6 +647,70 @@ class UpdateMessageDialog(wx.Dialog):
         # Closes and destroy this dialog.
         self.Close()
         self.Destroy()
+
+
+class MessageBox(wx.Dialog):
+    def __init__(self, parent, title, message, caption="InVesalius3 Error"):
+        wx.Dialog.__init__(self, parent, title=caption, style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER)
+
+        title_label = wx.StaticText(self, -1, title)
+
+        text = wx.TextCtrl(self, style=wx.TE_MULTILINE|wx.TE_READONLY|wx.BORDER_NONE)
+        text.SetValue(message)
+        text.SetBackgroundColour(wx.SystemSettings.GetColour(4))
+
+        width, height = text.GetTextExtent("O"*30)
+        text.SetMinSize((width, -1))
+
+        btn_ok = wx.Button(self, wx.ID_OK)
+        btnsizer = wx.StdDialogButtonSizer()
+        btnsizer.AddButton(btn_ok)
+        btnsizer.Realize()
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(title_label, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(text, 1, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(btnsizer, 0, wx.ALIGN_CENTER_VERTICAL|wx.EXPAND|wx.ALL, 5)
+        self.SetSizer(sizer)
+        sizer.Fit(self)
+        self.Center()
+        self.ShowModal()
+
+
+class ErrorMessageBox(wx.Dialog):
+    def __init__(self, parent, title, message, caption="InVesalius3 Error"):
+        wx.Dialog.__init__(self, parent, title=caption, style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER)
+
+        title_label = wx.StaticText(self, -1, title)
+        title_width, title_height = title_label.GetSize()
+
+        icon = wx.ArtProvider.GetBitmap(wx.ART_ERROR, wx.ART_MESSAGE_BOX, (title_height * 2, title_height * 2))
+        bmp = wx.StaticBitmap(self, -1, icon)
+
+        text = wx.TextCtrl(self, style=wx.TE_MULTILINE|wx.TE_READONLY|wx.BORDER_NONE)
+        text.SetValue(message)
+        text.SetBackgroundColour(wx.SystemSettings.GetColour(4))
+
+        width, height = text.GetTextExtent("M"*60)
+        text.SetMinSize((width, -1))
+
+
+        btn_ok = wx.Button(self, wx.ID_OK)
+        btnsizer = wx.StdDialogButtonSizer()
+        btnsizer.AddButton(btn_ok)
+        btnsizer.Realize()
+
+        title_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        title_sizer.Add(bmp, 0, wx.ALL | wx.EXPAND, 5)
+        title_sizer.Add(title_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(title_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(text, 1, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(btnsizer, 0, wx.EXPAND | wx.ALL, 5)
+        self.SetSizer(sizer)
+        sizer.Fit(self)
+        self.Center()
 
 
 def SaveChangesDialog__Old(filename):
@@ -894,31 +852,9 @@ def SurfaceSelectionRequiredForDuplication():
 
 
 # Dialogs for neuronavigation mode
-def InvalidFiducials():
-    msg = _("Fiducials are invalid. Select all coordinates.")
-    if sys.platform == 'darwin':
-        dlg = wx.MessageDialog(None, "", msg,
-                               wx.ICON_INFORMATION | wx.OK)
-    else:
-        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
-                               wx.ICON_INFORMATION | wx.OK)
-    dlg.ShowModal()
-    dlg.Destroy()
+# ----------------------------------
 
-
-def InvalidObjectRegistration():
-    msg = _("Perform coil registration before navigation.")
-    if sys.platform == 'darwin':
-        dlg = wx.MessageDialog(None, "", msg,
-                               wx.ICON_INFORMATION | wx.OK)
-    else:
-        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
-                               wx.ICON_INFORMATION | wx.OK)
-    dlg.ShowModal()
-    dlg.Destroy()
-
-
-def NavigationTrackerWarning(trck_id, lib_mode):
+def ShowNavigationTrackerWarning(trck_id, lib_mode):
     """
     Spatial Tracker connection error
     """
@@ -949,77 +885,25 @@ def NavigationTrackerWarning(trck_id, lib_mode):
     dlg.ShowModal()
     dlg.Destroy()
 
-
-def InvalidMarkersFile():
-    msg = _("The TXT file is invalid.")
+def ICPcorregistration(fre):
+    msg = _("The fiducial registration error is: ") + str(round(fre, 2)) + '\n\n' + \
+          _("Would you like to improve accuracy?")
     if sys.platform == 'darwin':
         dlg = wx.MessageDialog(None, "", msg,
-                               wx.ICON_INFORMATION | wx.OK)
+                               wx.YES_NO)
     else:
-        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
-                               wx.ICON_INFORMATION | wx.OK)
-    dlg.ShowModal()
-    dlg.Destroy()
+        dlg = wx.MessageDialog(None, msg, "InVesalius 3",
+                               wx.YES_NO)
 
-
-def NoMarkerSelected():
-    msg = _("No data selected")
-    if sys.platform == 'darwin':
-        dlg = wx.MessageDialog(None, "", msg,
-                                wx.ICON_INFORMATION | wx.OK)
+    if dlg.ShowModal() == wx.ID_YES:
+        flag = True
     else:
-        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
-                                wx.ICON_INFORMATION | wx.OK)
-    dlg.ShowModal()
+        flag = False
+
     dlg.Destroy()
+    return flag
 
-
-def DeleteAllMarkers():
-    msg = _("Do you really want to delete all markers?")
-    if sys.platform == 'darwin':
-        dlg = wx.MessageDialog(None, "", msg,
-                               wx.OK | wx.CANCEL | wx.ICON_QUESTION)
-    else:
-        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
-                               wx.OK | wx.CANCEL | wx.ICON_QUESTION)
-    result = dlg.ShowModal()
-    dlg.Destroy()
-    return result
-
-def DeleteTarget():
-    msg = _("Target deleted")
-    if sys.platform == 'darwin':
-        dlg = wx.MessageDialog(None, "", msg,
-                                wx.ICON_INFORMATION | wx.OK)
-    else:
-        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
-                                wx.ICON_INFORMATION | wx.OK)
-    dlg.ShowModal()
-    dlg.Destroy()
-
-def NewTarget():
-    msg = _("New target selected")
-    if sys.platform == 'darwin':
-        dlg = wx.MessageDialog(None, "", msg,
-                                wx.ICON_INFORMATION | wx.OK)
-    else:
-        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
-                                wx.ICON_INFORMATION | wx.OK)
-    dlg.ShowModal()
-    dlg.Destroy()
-
-def InvalidTargetID():
-    msg = _("Sorry, you cannot use 'TARGET' ID")
-    if sys.platform == 'darwin':
-        dlg = wx.MessageDialog(None, "", msg,
-                                wx.ICON_INFORMATION | wx.OK)
-    else:
-        dlg = wx.MessageDialog(None, msg, "InVesalius 3 - Neuronavigator",
-                                wx.ICON_INFORMATION | wx.OK)
-    dlg.ShowModal()
-    dlg.Destroy()
-
-def EnterMarkerID(default):
+def ShowEnterMarkerID(default):
     msg = _("Edit marker ID")
     if sys.platform == 'darwin':
         dlg = wx.TextEntryDialog(None, "", msg, defaultValue=default)
@@ -1029,6 +913,36 @@ def EnterMarkerID(default):
     result = dlg.GetValue()
     dlg.Destroy()
     return result
+
+
+def ShowConfirmationDialog(msg=_('Proceed?')):
+    # msg = _("Do you want to delete all markers?")
+    if sys.platform == 'darwin':
+        dlg = wx.MessageDialog(None, "", msg,
+                               wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+    else:
+        dlg = wx.MessageDialog(None, msg, "InVesalius 3",
+                               wx.OK | wx.CANCEL | wx.ICON_QUESTION)
+    result = dlg.ShowModal()
+    dlg.Destroy()
+    return result
+
+
+def ShowColorDialog(color_current):
+    cdata = wx.ColourData()
+    cdata.SetColour(wx.Colour(color_current))
+    dlg = wx.ColourDialog(None, data=cdata)
+    dlg.GetColourData().SetChooseFull(True)
+
+    if dlg.ShowModal() == wx.ID_OK:
+        color_new = dlg.GetColourData().GetColour().Get(includeAlpha=False)
+    else:
+        color_new = None
+
+    dlg.Destroy()
+    return color_new
+
+# ----------------------------------
 
 
 class NewMask(wx.Dialog):
@@ -1919,17 +1833,17 @@ class WatershedOptionsPanel(wx.Panel):
                                          min_value=1, max_value=10)
 
         box_sizer = wx.StaticBoxSizer(wx.StaticBox(self, -1, "Conectivity"), wx.VERTICAL)
-        box_sizer.Add(self.choice_2dcon, 0, wx.ALIGN_CENTER_VERTICAL,2)
-        box_sizer.Add(self.choice_3dcon, 0, wx.ALIGN_CENTER_VERTICAL,2)
+        box_sizer.Add(self.choice_2dcon, 0, wx.ALL, 5)
+        box_sizer.Add(self.choice_3dcon, 0, wx.ALL, 5)
 
         g_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        g_sizer.Add(wx.StaticText(self, -1, _("Gaussian sigma")), 0, wx.ALIGN_RIGHT | wx.ALL, 5)
-        g_sizer.Add(self.gaussian_size, 0, wx.ALIGN_LEFT | wx.ALL, 5)
+        g_sizer.Add(wx.StaticText(self, -1, _("Gaussian sigma")), 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        g_sizer.Add(self.gaussian_size, 0, wx.ALL, 5)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(self.choice_algorithm, 0, wx.ALIGN_CENTER_VERTICAL,2)
-        sizer.Add(box_sizer, 1, wx.EXPAND,2)
-        sizer.Add(g_sizer, 0, wx.ALIGN_LEFT, 2)
+        sizer.Add(self.choice_algorithm, 0, wx.ALL, 5)
+        sizer.Add(box_sizer, 1, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(g_sizer, 0, wx.ALL, 5)
 
         self.SetSizer(sizer)
         sizer.Fit(self)
@@ -1967,8 +1881,7 @@ class WatershedOptionsDialog(wx.Dialog):
         btnsizer.Realize()
 
         sizer.Add(wop, 0, wx.EXPAND)
-        sizer.Add(btnsizer, 0, wx.EXPAND)
-        sizer.AddSpacer(5)
+        sizer.Add(btnsizer, 0, wx.ALIGN_RIGHT | wx.BOTTOM, 5)
 
         self.SetSizer(sizer)
         sizer.Fit(self)
@@ -2029,16 +1942,16 @@ class MaskBooleanDialog(wx.Dialog):
 
         gsizer = wx.FlexGridSizer(rows=3, cols=2, hgap=5, vgap=5)
 
-        gsizer.Add(wx.StaticText(self, -1, _(u"Mask 1")))
+        gsizer.Add(wx.StaticText(self, -1, _(u"Mask 1")), 0, wx.ALIGN_CENTER_VERTICAL)
         gsizer.Add(self.mask1, 1, wx.EXPAND)
-        gsizer.Add(wx.StaticText(self, -1, _(u"Operation")))
+        gsizer.Add(wx.StaticText(self, -1, _(u"Operation")), 0, wx.ALIGN_CENTER_VERTICAL)
         gsizer.Add(self.op_boolean, 1, wx.EXPAND)
-        gsizer.Add(wx.StaticText(self, -1, _(u"Mask 2")))
+        gsizer.Add(wx.StaticText(self, -1, _(u"Mask 2")), 0, wx.ALIGN_CENTER_VERTICAL)
         gsizer.Add(self.mask2, 1, wx.EXPAND)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(gsizer, 0, wx.EXPAND | wx.ALIGN_CENTER | wx.ALL, border=5)
-        sizer.Add(btnsizer, 0, wx.EXPAND | wx.ALIGN_CENTER | wx.ALL, border=5)
+        sizer.Add(gsizer, 0, wx.EXPAND | wx.ALL, border=5)
+        sizer.Add(btnsizer, 0, wx.EXPAND | wx.ALL, border=5)
 
         self.SetSizer(sizer)
         sizer.Fit(self)
@@ -2767,8 +2680,8 @@ class SelectPartsOptionsDialog(wx.Dialog):
         sizer.AddSpacer(5)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        btn_sizer.Add(self.btn_ok, 0, flag=wx.ALIGN_RIGHT, border=5)
-        btn_sizer.Add(self.btn_cancel, 0, flag=wx.LEFT|wx.ALIGN_RIGHT, border=5)
+        btn_sizer.Add(self.btn_ok, 0)# flag=wx.ALIGN_RIGHT, border=5)
+        btn_sizer.Add(self.btn_cancel, 0, flag=wx.LEFT, border=5)
 
         sizer.Add(btn_sizer, 0, flag=wx.ALIGN_RIGHT|wx.LEFT|wx.RIGHT, border=5)
         sizer.AddSpacer(5)
@@ -3171,8 +3084,8 @@ class FillHolesAutoDialog(wx.Dialog):
         sizer.AddSpacer(5)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        btn_sizer.Add(self.apply_btn, 0, flag=wx.ALIGN_RIGHT, border=5)
-        btn_sizer.Add(self.close_btn, 0, flag=wx.LEFT|wx.ALIGN_RIGHT, border=5)
+        btn_sizer.Add(self.apply_btn, 0)# flag=wx.ALIGN_RIGHT, border=5)
+        btn_sizer.Add(self.close_btn, 0, flag=wx.LEFT, border=5)
 
         sizer.Add(btn_sizer, 0, flag=wx.ALIGN_RIGHT|wx.LEFT|wx.RIGHT, border=5)
 
@@ -3328,6 +3241,7 @@ class ObjectCalibrationDialog(wx.Dialog):
         self.trk_init = nav_prop[1]
         self.obj_ref_id = 2
         self.obj_name = None
+        self.polydata = None
 
         self.obj_fiducials = np.full([5, 3], np.nan)
         self.obj_orients = np.full([5, 3], np.nan)
@@ -3359,6 +3273,7 @@ class ObjectCalibrationDialog(wx.Dialog):
         choice_ref.SetSelection(1)
         choice_ref.Enable(1)
         if self.tracker_id == const.PATRIOT or self.tracker_id == const.ISOTRAKII:
+            self.obj_ref_id = 0
             choice_ref.SetSelection(0)
             choice_ref.Enable(0)
 
@@ -3416,7 +3331,7 @@ class ObjectCalibrationDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.Add(self.interactor, 0, wx.EXPAND)
         main_sizer.Add(group_sizer, 0,
-                       wx.EXPAND|wx.GROW|wx.LEFT|wx.TOP|wx.RIGHT|wx.BOTTOM|wx.ALIGN_CENTER_HORIZONTAL, 10)
+                       wx.EXPAND|wx.GROW|wx.LEFT|wx.TOP|wx.RIGHT|wx.BOTTOM, 10)
 
         self.SetSizer(main_sizer)
         main_sizer.Fit(self)
@@ -3470,6 +3385,7 @@ class ObjectCalibrationDialog(wx.Dialog):
         reader.SetFileName(self.obj_name)
         reader.Update()
         polydata = reader.GetOutput()
+        self.polydata = polydata
 
         if polydata.GetNumberOfPoints() == 0:
             wx.MessageBox(_("InVesalius was not able to import this surface"), _("Import surface error"))
@@ -3541,7 +3457,10 @@ class ObjectCalibrationDialog(wx.Dialog):
             else:
                 coord = coord_raw[0, :]
         else:
-            NavigationTrackerWarning(0, 'choose')
+            ShowNavigationTrackerWarning(0, 'choose')
+
+        if btn_id == 3:
+            coord = np.zeros([6,])
 
         # Update text controls with tracker coordinates
         if coord is not None or np.sum(coord) != 0.0:
@@ -3554,7 +3473,7 @@ class ObjectCalibrationDialog(wx.Dialog):
                     self.ball_actors[btn_id].GetProperty().SetColor(0.0, 1.0, 0.0)
             self.Refresh()
         else:
-            NavigationTrackerWarning(0, 'choose')
+            ShowNavigationTrackerWarning(0, 'choose')
 
     def OnChoiceRefMode(self, evt):
         # When ref mode is changed the tracker coordinates are set to nan
@@ -3587,8 +3506,316 @@ class ObjectCalibrationDialog(wx.Dialog):
             self.obj_ref_id = 0
 
     def GetValue(self):
-        return self.obj_fiducials, self.obj_orients, self.obj_ref_id, self.obj_name
+        return self.obj_fiducials, self.obj_orients, self.obj_ref_id, self.obj_name, self.polydata
 
+class ICPCorregistrationDialog(wx.Dialog):
+
+    def __init__(self, nav_prop):
+        import invesalius.project as prj
+
+        self.__bind_events()
+
+        self.tracker_id = nav_prop[0]
+        self.trk_init = nav_prop[1]
+        self.obj_ref_id = 2
+        self.obj_name = None
+        self.obj_actor = None
+        self.polydata = None
+        self.m_icp = None
+        self.initial_focus = None
+        self.icp_mode = 0
+        self.staticballs = []
+        self.point_coord = []
+        self.transformed_points = []
+
+        self.obj_fiducials = np.full([5, 3], np.nan)
+        self.obj_orients = np.full([5, 3], np.nan)
+
+        wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, _(u"ICP Corregistration"), size=(450, 440),
+                           style=wx.DEFAULT_DIALOG_STYLE | wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP)
+
+        self.proj = prj.Project()
+
+        self._init_gui()
+
+    def __bind_events(self):
+        Publisher.subscribe(self.UpdateCurrentCoord, 'Update cross position')
+
+    def UpdateCurrentCoord(self, arg, position):
+        self.current_coord = position[:]
+
+    def _init_gui(self):
+        self.interactor = wxVTKRenderWindowInteractor(self, -1, size=self.GetSize())
+        self.interactor.Enable(1)
+        self.ren = vtk.vtkRenderer()
+        self.interactor.GetRenderWindow().AddRenderer(self.ren)
+
+        txt_surface = wx.StaticText(self, -1, _('Select the surface:'))
+
+        combo_surface_name = wx.ComboBox(self, -1,
+                                         style=wx.CB_DROPDOWN | wx.CB_READONLY)
+        # combo_surface_name.SetSelection(0)
+        if sys.platform != 'win32':
+            combo_surface_name.SetWindowVariant(wx.WINDOW_VARIANT_SMALL)
+        combo_surface_name.Bind(wx.EVT_COMBOBOX, self.OnComboName)
+        for n in range(len(self.proj.surface_dict)):
+            combo_surface_name.Insert(str(self.proj.surface_dict[n].name), n)
+
+        self.combo_surface_name = combo_surface_name
+
+        init_surface = 0
+        combo_surface_name.SetSelection(init_surface)
+        self.surface = self.proj.surface_dict[init_surface].polydata
+        self.LoadActor()
+
+        create_point = wx.Button(self, -1, label=_('Create point'))
+        create_point.Bind(wx.EVT_BUTTON, self.OnCreatePoint)
+
+        cont_point = wx.ToggleButton(self, -1, label=_('Continuous acquisition'))
+        cont_point.Bind(wx.EVT_TOGGLEBUTTON, partial(self.OnContinuousAcquisition, btn=cont_point))
+        self.cont_point = cont_point
+
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.OnUpdate, self.timer)
+
+        btn_acqui_sizer = wx.FlexGridSizer(rows=1, cols=2, hgap=5, vgap=5)
+        btn_acqui_sizer.AddMany([(create_point, wx.LEFT),
+                                 (cont_point, wx.RIGHT)])
+
+        icp = wx.Button(self, -1, label=_('Apply registration'))
+        icp.Bind(wx.EVT_BUTTON, self.OnICP)
+
+        tooltip = wx.ToolTip(_("Choose the ICP method"))
+        choice_icp_method = wx.ComboBox(self, -1, "",
+                                        choices=([_("Affine"), _("Similarity"), _("RigidBody")]), style=wx.CB_DROPDOWN|wx.CB_READONLY)
+        choice_icp_method.SetSelection(0)
+        choice_icp_method.SetToolTip(tooltip)
+        choice_icp_method.Bind(wx.EVT_COMBOBOX, self.OnChoiceICPMethod)
+
+        btn_icp_sizer = wx.FlexGridSizer(rows=1, cols=2, hgap=5, vgap=5)
+        btn_icp_sizer.AddMany([(choice_icp_method, wx.LEFT),
+                               (icp, wx.RIGHT)])
+
+
+        # Buttons to finish or cancel object registration
+        tooltip = wx.ToolTip(_(u"ICP done"))
+        btn_ok = wx.Button(self, wx.ID_OK, _(u"Done"))
+        btn_ok.SetToolTip(tooltip)
+
+        btn_cancel = wx.Button(self, wx.ID_CANCEL)
+        btn_cancel.SetHelpText("")
+
+        btnsizer = wx.FlexGridSizer(rows=1, cols=2, hgap=5, vgap=5)
+        btnsizer.AddMany([(btn_ok, wx.LEFT),
+                          (btn_cancel, wx.RIGHT)])
+
+
+        top_sizer = wx.FlexGridSizer(rows=2, cols=1, hgap=50, vgap=5)
+        top_sizer.AddMany([txt_surface,
+                           combo_surface_name])
+
+        extra_sizer = wx.FlexGridSizer(rows=3, cols=1, hgap=50, vgap=10)
+        extra_sizer.AddMany([btn_acqui_sizer,
+                             btn_icp_sizer,
+                             btnsizer])
+
+        self.progress = wx.Gauge(self, -1)
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        main_sizer.Add(top_sizer, 0, wx.EXPAND|wx.GROW|wx.LEFT|wx.TOP|wx.RIGHT|wx.BOTTOM, 10)
+        main_sizer.Add(self.interactor, 0, wx.EXPAND)
+        main_sizer.Add(extra_sizer, 0,
+                       wx.EXPAND|wx.GROW|wx.LEFT|wx.TOP|wx.RIGHT|wx.BOTTOM, 10)
+        main_sizer.Add(self.progress, 0, wx.EXPAND | wx.ALL, 5)
+
+        self.SetSizer(main_sizer)
+        main_sizer.Fit(self)
+
+    def OnComboName(self, evt):
+        surface_name = evt.GetString()
+        surface_index = evt.GetSelection()
+        self.surface = self.proj.surface_dict[surface_index].polydata
+        if self.obj_actor:
+            self.RemoveActor()
+        self.LoadActor()
+
+    def LoadActor(self):
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(self.surface)
+        mapper.ScalarVisibilityOff()
+        #mapper.ImmediateModeRenderingOn()
+
+        obj_actor = vtk.vtkActor()
+        obj_actor.SetMapper(mapper)
+        self.obj_actor = obj_actor
+
+        self.ren.AddActor(obj_actor)
+        self.ren.ResetCamera()
+        self.interactor.Render()
+
+    def RemoveActor(self):
+        #self.ren.RemoveActor(self.obj_actor)
+        self.ren.RemoveAllViewProps()
+        self.point_coord = []
+        self.ren.ResetCamera()
+        self.interactor.Render()
+
+    def AddMarker(self, size, colour, coord):
+        """
+        Markers created by navigation tools and rendered in volume viewer.
+        """
+
+        x, y, z = bases.flip_x_m(coord)[:3, 0]
+
+        ball_ref = vtk.vtkSphereSource()
+        ball_ref.SetRadius(size)
+        ball_ref.SetCenter(x, y, z)
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(ball_ref.GetOutputPort())
+
+        prop = vtk.vtkProperty()
+        prop.SetColor(colour[0:3])
+
+        #adding a new actor for the present ball
+        sphere_actor = vtk.vtkActor()
+
+        sphere_actor.SetMapper(mapper)
+        sphere_actor.SetProperty(prop)
+
+        self.ren.AddActor(sphere_actor)
+        self.point_coord.append([x, y, z])
+
+        self.Refresh()
+
+    def SetProgress(self, progress):
+        self.progress.SetValue(progress * 100)
+        self.Refresh()
+
+    def vtkmatrix_to_numpy(self, matrix):
+        """
+        Copies the elements of a vtkMatrix4x4 into a numpy array.
+
+        :param matrix: The matrix to be copied into an array.
+        :type matrix: vtk.vtkMatrix4x4
+        :rtype: numpy.ndarray
+        """
+        m = np.ones((4, 4))
+        for i in range(4):
+            for j in range(4):
+                m[i, j] = matrix.GetElement(i, j)
+        return m
+
+    def OnChoiceICPMethod(self, evt):
+        self.icp_mode = evt.GetSelection()
+
+    def OnICP(self, evt):
+        self.SetProgress(0.3)
+        if self.cont_point:
+            self.cont_point.SetValue(False)
+            self.OnContinuousAcquisition(evt=None, btn=self.cont_point)
+        sourcePoints = np.array(self.point_coord)
+        sourcePoints_vtk = vtk.vtkPoints()
+
+        for i in range(len(sourcePoints)):
+            id0 = sourcePoints_vtk.InsertNextPoint(sourcePoints[i])
+
+        source = vtk.vtkPolyData()
+        source.SetPoints(sourcePoints_vtk)
+
+        icp = vtk.vtkIterativeClosestPointTransform()
+        icp.SetSource(source)
+        icp.SetTarget(self.surface)
+
+        if self.icp_mode == 0:
+            print("Affine mode")
+            icp.GetLandmarkTransform().SetModeToAffine()
+        elif self.icp_mode == 1:
+            print("Similarity mode")
+            icp.GetLandmarkTransform().SetModeToSimilarity()
+        elif self.icp_mode == 2:
+            print("Rigid mode")
+            icp.GetLandmarkTransform().SetModeToRigidBody()
+
+        #icp.DebugOn()
+        icp.SetMaximumNumberOfIterations(1000)
+
+        icp.Modified()
+
+        icp.Update()
+
+        self.m_icp = self.vtkmatrix_to_numpy(icp.GetMatrix())
+
+        icpTransformFilter = vtk.vtkTransformPolyDataFilter()
+        icpTransformFilter.SetInputData(source)
+
+        icpTransformFilter.SetTransform(icp)
+        icpTransformFilter.Update()
+
+        transformedSource = icpTransformFilter.GetOutput()
+
+        self.SetProgress(1)
+
+        for i in range(transformedSource.GetNumberOfPoints()):
+            p = [0, 0, 0]
+            transformedSource.GetPoint(i, p)
+            self.transformed_points.append(p)
+            point = vtk.vtkSphereSource()
+            point.SetCenter(p)
+            point.SetRadius(3)
+            point.SetPhiResolution(3)
+            point.SetThetaResolution(3)
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputConnection(point.GetOutputPort())
+
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetColor((0,1,0))
+
+            self.ren.AddActor(actor)
+        self.Refresh()
+
+    def SetCameraVolume(self, position):
+        cam_focus = np.array(bases.flip_x_m(position[:3])[:3, 0])
+        cam = self.ren.GetActiveCamera()
+
+        if self.initial_focus is None:
+            self.initial_focus = np.array(cam.GetFocalPoint())
+
+        cam_pos0 = np.array(cam.GetPosition())
+        cam_focus0 = np.array(cam.GetFocalPoint())
+        v0 = cam_pos0 - cam_focus0
+        v0n = np.sqrt(inner1d(v0, v0))
+
+        v1 = (cam_focus - self.initial_focus)
+
+        v1n = np.sqrt(inner1d(v1, v1))
+        if not v1n:
+            v1n = 1.0
+        cam_pos = (v1/v1n)*v0n + cam_focus
+
+        cam.SetFocalPoint(cam_focus)
+        cam.SetPosition(cam_pos)
+        self.Refresh()
+
+    def OnContinuousAcquisition(self, evt=None, btn=None):
+        value = btn.GetValue()
+        if value:
+            self.timer.Start(500)
+        else:
+            self.timer.Stop()
+
+    def OnUpdate(self, event):
+        self.AddMarker(3, (1, 0, 0), self.current_coord[:3])
+        self.SetCameraVolume(self.current_coord[:3])
+
+    def OnCreatePoint(self, evt):
+        self.AddMarker(3,(1,0,0),self.current_coord[:3])
+        self.SetCameraVolume(self.current_coord[:3])
+
+    def GetValue(self):
+        return self.m_icp, self.point_coord, self.transformed_points
 
 class SurfaceProgressWindow(object):
     def __init__(self):
@@ -3958,3 +4185,73 @@ class SetCOMport(wx.Dialog):
 
     def GetValue(self):
         return self.com_ports.GetString(self.com_ports.GetSelection())
+
+
+class ManualWWWLDialog(wx.Dialog):
+    def __init__(self, parent):
+        wx.Dialog.__init__(self, parent, -1, _("Set WW&WL manually"))
+        self._init_gui()
+
+    def _init_gui(self):
+        import invesalius.data.slice_ as slc
+        ww = slc.Slice().window_width
+        wl = slc.Slice().window_level
+
+        self.txt_wl = wx.TextCtrl(self, -1, str(int(wl)))
+        wl_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        wl_sizer.Add(wx.StaticText(self, -1, _("Window Level")), 0, wx.ALIGN_CENTER_VERTICAL)
+        wl_sizer.Add(self.txt_wl, 1, wx.ALL | wx.EXPAND, 5)
+        wl_sizer.Add(wx.StaticText(self, -1, _("WL")), 0, wx.ALIGN_CENTER_VERTICAL)
+
+        self.txt_ww = wx.TextCtrl(self, -1, str(int(ww)))
+        ww_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        ww_sizer.Add(wx.StaticText(self, -1, _("Window Width")), 0, wx.ALIGN_CENTER_VERTICAL)
+        ww_sizer.Add(self.txt_ww, 1, wx.ALL | wx.EXPAND, 5)
+        ww_sizer.Add(wx.StaticText(self, -1, _("WW")), 0, wx.ALIGN_CENTER_VERTICAL)
+
+        btn_ok = wx.Button(self, wx.ID_OK)
+        btn_cancel = wx.Button(self, wx.ID_CANCEL)
+        btnsizer = wx.StdDialogButtonSizer()
+        btnsizer.AddButton(btn_ok)
+        btnsizer.AddButton(btn_cancel)
+        btnsizer.Realize()
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        main_sizer.Add(wl_sizer, 1, wx.ALL | wx.EXPAND, 5)
+        main_sizer.Add(ww_sizer, 1, wx.ALL | wx.EXPAND, 5)
+        main_sizer.Add(btnsizer, 1, wx.ALL | wx.EXPAND, 5)
+
+        btn_ok.Bind(wx.EVT_BUTTON, self.OnOK)
+        btn_cancel.Bind(wx.EVT_BUTTON, self.OnCancel)
+        self.Bind(wx.EVT_CLOSE, self.OnClose)
+
+        self.SetSizer(main_sizer)
+        main_sizer.Fit(self)
+        main_sizer.SetSizeHints(self)
+
+        self.Layout()
+        self.Center()
+
+    def OnOK(self, evt):
+        try:
+            ww = int(self.txt_ww.GetValue())
+            wl = int(self.txt_wl.GetValue())
+        except ValueError:
+            self.Close()
+            return
+
+        Publisher.sendMessage('Bright and contrast adjustment image', window=ww, level=wl)
+        const.WINDOW_LEVEL['Manual'] = (ww, wl)
+        Publisher.sendMessage('Check window and level other')
+        Publisher.sendMessage('Update window level value', window=ww, level=wl)
+        #Necessary update the slice plane in the volume case exists
+        Publisher.sendMessage('Update slice viewer')
+        Publisher.sendMessage('Render volume viewer')
+
+        self.Close()
+
+    def OnCancel(self, evt):
+        self.Close()
+
+    def OnClose(self, evt):
+        self.Destroy()

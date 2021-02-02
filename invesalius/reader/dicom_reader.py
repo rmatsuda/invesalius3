@@ -25,7 +25,10 @@ from multiprocessing import cpu_count
 
 import vtk
 import gdcm
-from wx.lib.pubsub import pub as Publisher
+# Not showing GDCM warning and debug messages
+gdcm.Trace_DebugOff()
+gdcm.Trace_WarningOff()
+from pubsub import pub as Publisher
 
 import invesalius.constants as const
 import invesalius.reader.dicom as dicom
@@ -47,6 +50,7 @@ if sys.platform == 'win32':
         _has_win32api = False
 else:
     _has_win32api = False
+
 
 def ReadDicomGroup(dir_):
 
@@ -78,15 +82,15 @@ def SelectLargerDicomGroup(patient_group):
 def SortFiles(filelist, dicom):
     # Sort slices
     # FIXME: Coronal Crash. necessary verify
-    if (dicom.image.orientation_label != "CORONAL"):
-        ##Organize reversed image
-        sorter = gdcm.IPPSorter()
-        sorter.SetComputeZSpacing(True)
-        sorter.SetZSpacingTolerance(1e-10)
-        sorter.Sort(filelist)
+    # if (dicom.image.orientation_label != "CORONAL"):
+    ##Organize reversed image
+    sorter = gdcm.IPPSorter()
+    sorter.SetComputeZSpacing(True)
+    sorter.SetZSpacingTolerance(1e-10)
+    sorter.Sort(filelist)
 
-        #Getting organized image
-        filelist = sorter.GetFilenames()
+    #Getting organized image
+    filelist = sorter.GetFilenames()
 
     return filelist
 
@@ -128,6 +132,8 @@ class LoadDicom:
 
             tag = gdcm.Tag(0x0008, 0x0005)
             ds = reader.GetFile().GetDataSet()
+            image_helper = gdcm.ImageHelper()
+            data_dict['spacing'] = image_helper.GetSpacingValue(reader.GetFile())
             if ds.FindDataElement(tag):
                 encoding_value = str(ds.GetDataElement(tag).GetValue()).split('\\')[0]
                 

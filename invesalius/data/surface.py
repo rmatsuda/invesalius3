@@ -38,7 +38,7 @@ import vtk
 import wx
 import wx.lib.agw.genericmessagedialog as GMD
 
-from wx.lib.pubsub import pub as Publisher
+from pubsub import pub as Publisher
 
 if sys.platform == 'win32':
     try:
@@ -59,9 +59,9 @@ import invesalius.utils as utl
 import invesalius.data.vtk_utils as vu
 
 from invesalius.gui import dialogs
+from invesalius_cy import cy_mesh
 
-from invesalius.data import cy_mesh
-# TODO: Verificar ReleaseDataFlagOn and SetSource 
+# TODO: Verificar ReleaseDataFlagOn and SetSource
 
 
 class Surface():
@@ -383,6 +383,7 @@ class SurfaceManager():
 
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
+        actor.GetProperty().SetBackfaceCulling(1)
 
         print("BOunds", actor.GetBounds())
 
@@ -494,6 +495,7 @@ class SurfaceManager():
 
             # Represent an object (geometry & properties) in the rendered scene
             actor = vtk.vtkActor()
+            actor.GetProperty().SetBackfaceCulling(1)
             actor.SetMapper(mapper)
 
             # Set actor colour and transparency
@@ -536,6 +538,7 @@ class SurfaceManager():
 
         # Represent an object (geometry & properties) in the rendered scene
         actor = vtk.vtkActor()
+        actor.GetProperty().SetBackfaceCulling(1)
         actor.SetMapper(mapper)
         del mapper
         #Create Surface instance
@@ -598,6 +601,10 @@ class SurfaceManager():
         filename_img = slice_.matrix_filename
         spacing = slice_.spacing
 
+        mask_temp_file = mask.temp_file
+        mask_shape = mask.matrix.shape
+        mask_dtype = mask.matrix.dtype
+
         algorithm = surface_parameters['method']['algorithm']
         options = surface_parameters['method']['options']
 
@@ -607,6 +614,8 @@ class SurfaceManager():
         keep_largest = surface_parameters['options']['keep_largest']
 
         fill_border_holes = surface_parameters['options'].get('fill_border_holes', True)
+
+        print(surface_parameters)
 
         mode = 'CONTOUR' # 'GRAYSCALE'
         min_value, max_value = mask.threshold_range
@@ -641,6 +650,16 @@ class SurfaceManager():
         else:
             flip_image = True
 
+        if imagedata_resolution > 0:
+            spacing = tuple([s * imagedata_resolution for s in spacing])
+            matrix = iu.resize_image_array(matrix, 1.0/imagedata_resolution, True)
+            mask = iu.resize_image_array(mask.matrix, 1.0/imagedata_resolution, True)
+
+            filename_img = matrix.filename
+            mask_temp_file = mask.filename
+            mask_shape = mask.shape
+            mask_dtype = mask.dtype
+
         n_processors = multiprocessing.cpu_count()
 
         o_piece = 1
@@ -649,9 +668,12 @@ class SurfaceManager():
         n_pieces = int(round(matrix.shape[0] / piece_size + 0.5, 0))
 
         filenames = []
-        pool = multiprocessing.Pool(processes=min(n_pieces, n_processors))
+        ctx = multiprocessing.get_context('spawn')
+        pool = ctx.Pool(processes=min(n_pieces, n_processors))
         manager = multiprocessing.Manager()
         msg_queue = manager.Queue(1)
+
+        print("Resolution", imagedata_resolution)
 
         # If InVesalius is running without GUI
         if wx.GetApp() is None:
@@ -662,8 +684,8 @@ class SurfaceManager():
                 print("new_piece", roi)
                 f = pool.apply_async(surface_process.create_surface_piece,
                                      args = (filename_img, matrix.shape, matrix.dtype,
-                                             mask.temp_file, mask.matrix.shape,
-                                             mask.matrix.dtype, roi, spacing, mode,
+                                             mask_temp_file, mask_shape,
+                                             mask_dtype, roi, spacing, mode,
                                              min_value, max_value, decimate_reduction,
                                              smooth_relaxation_factor,
                                              smooth_iterations, language, flip_image,
@@ -720,31 +742,18 @@ class SurfaceManager():
                 end = init + piece_size + o_piece
                 roi = slice(init, end)
                 print("new_piece", roi)
-                try:
-                    f = pool.apply_async(surface_process.create_surface_piece,
-                                         args = (filename_img, matrix.shape, matrix.dtype,
-                                                 mask.temp_file, mask.matrix.shape,
-                                                 mask.matrix.dtype, roi, spacing, mode,
-                                                 min_value, max_value, decimate_reduction,
-                                                 smooth_relaxation_factor,
-                                                 smooth_iterations, language, flip_image,
-                                                 algorithm != 'Default', algorithm,
-                                                 imagedata_resolution, fill_border_holes),
-                                         callback=lambda x: filenames.append(x),
-                                         error_callback=functools.partial(self._on_callback_error,
-                                                                          dialog=sp))
-                # python2
-                except TypeError:
-                    f = pool.apply_async(surface_process.create_surface_piece,
-                                         args = (filename_img, matrix.shape, matrix.dtype,
-                                                 mask.temp_file, mask.matrix.shape,
-                                                 mask.matrix.dtype, roi, spacing, mode,
-                                                 min_value, max_value, decimate_reduction,
-                                                 smooth_relaxation_factor,
-                                                 smooth_iterations, language, flip_image,
-                                                 algorithm != 'Default', algorithm,
-                                                 imagedata_resolution, fill_border_holes),
-                                         callback=lambda x: filenames.append(x))
+                f = pool.apply_async(surface_process.create_surface_piece,
+                                     args = (filename_img, matrix.shape, matrix.dtype,
+                                             mask_temp_file, mask_shape,
+                                             mask_dtype, roi, spacing, mode,
+                                             min_value, max_value, decimate_reduction,
+                                             smooth_relaxation_factor,
+                                             smooth_iterations, language, flip_image,
+                                             algorithm != 'Default', algorithm,
+                                             imagedata_resolution, fill_border_holes),
+                                     callback=lambda x: filenames.append(x),
+                                     error_callback=functools.partial(self._on_callback_error,
+                                                                      dialog=sp))
 
             while len(filenames) != n_pieces:
                 if sp.WasCancelled() or not sp.running:
@@ -871,7 +880,14 @@ class SurfaceManager():
                 os.remove(_temp_file)
 
             temp_file = utl.decode(temp_file, const.FS_ENCODE)
-            self._export_surface(temp_file, filetype)
+            try:
+                self._export_surface(temp_file, filetype)
+            except ValueError:
+                if wx.GetApp() is None:
+                    print("It was not possible to export the surface because the surface is empty")
+                else:
+                    wx.MessageBox(_("It was not possible to export the surface because the surface is empty"), _("Export surface error"))
+                return
 
             shutil.move(temp_file, filename)
 
@@ -897,6 +913,9 @@ class SurfaceManager():
                 polydata = polydata_list[0]
             else:
                 polydata = pu.Merge(polydata_list)
+
+            if polydata.GetNumberOfPoints() == 0:
+                raise ValueError
 
             # Having a polydata that represents all surfaces
             # selected, we write it, according to filetype

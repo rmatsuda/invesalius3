@@ -26,7 +26,7 @@ except(ImportError):
     from ordereddict import OrderedDict
 
 import wx
-from wx.lib.pubsub import pub as Publisher
+from pubsub import pub as Publisher
 
 import invesalius.constants as const
 import invesalius.data.slice_ as sl
@@ -205,7 +205,7 @@ class SliceMenu(wx.Menu):
     def OnPopup(self, evt):
         id = evt.GetId()
         item = self.ID_TO_TOOL_ITEM[evt.GetId()]
-        key = item.GetLabel()
+        key = item.GetItemLabelText()
         if(key in const.WINDOW_LEVEL.keys()):
             window, level = const.WINDOW_LEVEL[key]
             Publisher.sendMessage('Bright and contrast adjustment image',

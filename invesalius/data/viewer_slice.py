@@ -31,7 +31,7 @@ from vtk.wx.wxVTKRenderWindowInteractor import wxVTKRenderWindowInteractor
 import invesalius.data.styles as styles
 import wx
 import sys
-from wx.lib.pubsub import pub as Publisher
+from pubsub import pub as Publisher
 
 try:
     from agw import floatspin as FS
@@ -102,13 +102,13 @@ class ContourMIPConfig(wx.Panel):
         self.txt_mip_border = wx.StaticText(self, -1, _("Sharpness"))
 
         sizer = wx.BoxSizer(wx.HORIZONTAL)
-        sizer.Add(txt_mip_size, 0, wx.EXPAND | wx.ALL, 2)
+        sizer.Add(txt_mip_size, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 2)
         sizer.Add(self.mip_size_spin, 0)
         try:
             sizer.Add(10, 0)
         except TypeError:
             sizer.Add((10, 0))
-        sizer.Add(self.txt_mip_border, 0, wx.EXPAND | wx.ALL, 2)
+        sizer.Add(self.txt_mip_border, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 2)
         sizer.Add(self.border_spin, 0, wx.EXPAND)
         try:
             sizer.Add(10, 0)
@@ -303,8 +303,8 @@ class Viewer(wx.Panel):
             self.style.CleanUp()
 
         del self.style
-        
-        style = styles.get_style(state)(self)
+
+        style = styles.Styles.get_style(state)(self)
 
         setup = getattr(style, 'SetUp', None)
         if setup:
@@ -573,7 +573,7 @@ class Viewer(wx.Panel):
 
         self.cross.SetFocalPoint((ux, uy, uz))
         self.ScrollSlice(coord)
-        Publisher.sendMessage('Set ball reference position', position=(ux, uy, uz))
+        self.interactor.Render()
 
     def ScrollSlice(self, coord):
         if self.orientation == "AXIAL":
@@ -817,9 +817,9 @@ class Viewer(wx.Panel):
                                  ('Set scroll position',
                                   self.orientation))
         Publisher.subscribe(self.__update_cross_position,
-                                'Update cross position')
-        Publisher.subscribe(self.UpdateSlicesNavigation,
-                            'Co-registered points')
+                            'Update cross position')
+        # Publisher.subscribe(self.UpdateSlicesNavigation,
+        #                     'Co-registered points')
         ###
         #  Publisher.subscribe(self.ChangeBrushColour,
                                  #  'Add mask')
@@ -1136,8 +1136,9 @@ class Viewer(wx.Panel):
 
         renderer.AddActor(cross_actor)
 
-    def __update_cross_position(self, position):
-        self.cross.SetFocalPoint(position)
+    def __update_cross_position(self, arg, position):
+        # self.cross.SetFocalPoint(position[:3])
+        self.UpdateSlicesNavigation(None, position)
 
     def _set_cross_visibility(self, visibility):
         self.cross_actor.SetVisibility(visibility)
@@ -1296,8 +1297,8 @@ class Viewer(wx.Panel):
         if self.state == const.SLICE_STATE_CROSS:
             # Update other slice's cross according to the new focal point from
             # the actual orientation.
-            focal_point = self.cross.GetFocalPoint()
-            Publisher.sendMessage('Update cross position', position=focal_point)
+            x, y, z = self.cross.GetFocalPoint()
+            Publisher.sendMessage('Update cross position', arg=None, position=(x, y, z, 0., 0., 0.))
             Publisher.sendMessage('Update slice viewer')
         else:
             self.interactor.Render()
@@ -1331,10 +1332,12 @@ class Viewer(wx.Panel):
         if (evt.GetKeyCode() == wx.WXK_UP and pos > min):
             self.OnScrollForward()
             self.OnScrollBar()
+            skip = False
 
         elif (evt.GetKeyCode() == wx.WXK_DOWN and pos < max):
             self.OnScrollBackward()
             self.OnScrollBar()
+            skip = False
 
         elif (evt.GetKeyCode() == wx.WXK_NUMPAD_ADD):
             actual_value = self.mip_ctrls.mip_size_spin.GetValue()
@@ -1342,6 +1345,7 @@ class Viewer(wx.Panel):
             if self.mip_ctrls.mip_size_spin.GetValue() != actual_value:
                 self.number_slices = self.mip_ctrls.mip_size_spin.GetValue()
                 self.ReloadActualSlice()
+            skip = False
 
         elif (evt.GetKeyCode() == wx.WXK_NUMPAD_SUBTRACT):
             actual_value = self.mip_ctrls.mip_size_spin.GetValue()
@@ -1349,6 +1353,7 @@ class Viewer(wx.Panel):
             if self.mip_ctrls.mip_size_spin.GetValue() != actual_value:
                 self.number_slices = self.mip_ctrls.mip_size_spin.GetValue()
                 self.ReloadActualSlice()
+            skip = False
 
         elif evt.GetKeyCode() in projections:
             self.slice_.SetTypeProjection(projections[evt.GetKeyCode()])
@@ -1427,10 +1432,19 @@ class Viewer(wx.Panel):
         self.overwrite_mask = flag
 
     def set_slice_number(self, index):
+        max_slice_number = sl.Slice().GetNumberOfSlices(self.orientation)
+        if index < 0:
+            index = 0
+        if index >= max_slice_number:
+            index = max_slice_number - 1
         inverted = self.mip_ctrls.inverted.GetValue()
         border_size = self.mip_ctrls.border_spin.GetValue()
-        image = self.slice_.GetSlices(self.orientation, index,
-                                      self.number_slices, inverted, border_size)
+        try:
+            image = self.slice_.GetSlices(self.orientation, index,
+                                          self.number_slices, inverted,
+                                          border_size)
+        except IndexError:
+            return
         self.slice_data.actor.SetInputData(image)
         for actor in self.actors_by_slice_number[self.slice_data.number]:
             self.slice_data.renderer.RemoveActor(actor)
@@ -1496,7 +1510,6 @@ class Viewer(wx.Panel):
 
     def UpdateCross(self, coord):
         self.cross.SetFocalPoint(coord)
-        Publisher.sendMessage('Set ball reference position', position=self.cross.GetFocalPoint())
         Publisher.sendMessage('Co-registered points',  arg=None, position=(coord[0], coord[1], coord[2], 0., 0., 0.))
         self.OnScrollBar()
         self.interactor.Render()
@@ -1530,3 +1543,39 @@ class Viewer(wx.Panel):
                 renderer.RemoveActor(actor)
                 # and remove the actor from the actor's list
                 self.actors_by_slice_number[slice_number].remove(actor)
+
+    def get_actual_mask(self):
+        # Returns actual mask. Returns None if there is not a mask or no mask
+        # visible.
+        mask = self.slice_.current_mask
+        return mask
+
+    def get_slice(self):
+        return self.slice_
+
+    def discard_slice_cache(self, all_orientations=False, vtk_cache=True):
+        if all_orientations:
+            for orientation in self.slice_.buffer_slices:
+                buffer_ = self.slice_.buffer_slices[orientation]
+                buffer_.discard_image()
+                if vtk_cache:
+                    buffer_.discard_vtk_image()
+        else:
+            buffer_ = self.slice_.buffer_slices[self.orientation]
+            buffer_.discard_image()
+            if vtk_cache:
+                buffer_.discard_vtk_image()
+
+    def discard_mask_cache(self, all_orientations=False, vtk_cache=True):
+        if all_orientations:
+            for orientation in self.slice_.buffer_slices:
+                buffer_ = self.slice_.buffer_slices[orientation]
+                buffer_.discard_mask()
+                if vtk_cache:
+                    buffer_.discard_vtk_mask()
+
+        else:
+            buffer_ = self.slice_.buffer_slices[self.orientation]
+            buffer_.discard_mask()
+            if vtk_cache:
+                buffer_.discard_vtk_mask()

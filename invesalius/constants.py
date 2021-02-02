@@ -19,6 +19,7 @@
 
 import os.path
 import platform
+import psutil
 import sys
 import wx
 import itertools
@@ -486,6 +487,7 @@ ID_ABOUT = wx.ID_ABOUT
     [wx.NewId() for number in range(3)]
 
 ID_START = wx.NewId()
+ID_PLUGINS_SHOW_PATH = wx.NewId()
 
 ID_FLIP_X = wx.NewId()
 ID_FLIP_Y = wx.NewId()
@@ -507,14 +509,26 @@ ID_MANUAL_SEGMENTATION = wx.NewId()
 ID_WATERSHED_SEGMENTATION = wx.NewId()
 ID_THRESHOLD_SEGMENTATION = wx.NewId()
 ID_FLOODFILL_SEGMENTATION = wx.NewId()
+ID_FLOODFILL_SEGMENTATION = wx.NewId()
+ID_SEGMENTATION_BRAIN = wx.NewId()
 ID_CROP_MASK = wx.NewId()
 ID_DENSITY_MEASURE = wx.NewId()
 ID_MASK_DENSITY_MEASURE = wx.NewId()
 ID_CREATE_SURFACE = wx.NewId()
 ID_CREATE_MASK = wx.NewId()
+ID_MASK_3D_PREVIEW = wx.NewId()
+ID_MASK_3D_RELOAD = wx.NewId()
+ID_MASK_3D_AUTO_RELOAD = wx.NewId()
 
 ID_GOTO_SLICE = wx.NewId()
 ID_GOTO_COORD = wx.NewId()
+
+ID_MANUAL_WWWL = wx.NewId()
+
+# Tractography with Trekker
+ID_TREKKER_MASK = wx.NewId()
+ID_TREKKER_IMG = wx.NewId()
+ID_TREKKER_FOD = wx.NewId()
 
 #---------------------------------------------------------
 STATE_DEFAULT = 1000
@@ -540,6 +554,7 @@ SLICE_STATE_REMOVE_MASK_PARTS = 3012
 SLICE_STATE_SELECT_MASK_PARTS = 3013
 SLICE_STATE_FFILL_SEGMENTATION = 3014
 SLICE_STATE_CROP_MASK = 3015
+SLICE_STATE_TRACTS = 3016
 
 VOLUME_STATE_SEED = 2001
 #  STATE_LINEAR_MEASURE = 3001
@@ -554,7 +569,7 @@ TOOL_STATES = [STATE_WL, STATE_SPIN, STATE_ZOOM,
 
 
 TOOL_SLICE_STATES = [SLICE_STATE_CROSS, SLICE_STATE_SCROLL,
-                     SLICE_STATE_REORIENT]
+                     SLICE_STATE_REORIENT, SLICE_STATE_TRACTS]
 
 
 SLICE_STYLES = TOOL_STATES + TOOL_SLICE_STATES
@@ -569,11 +584,6 @@ SLICE_STYLES.append(SLICE_STATE_CROP_MASK)
 SLICE_STYLES.append(STATE_MEASURE_DENSITY)
 SLICE_STYLES.append(STATE_MEASURE_DENSITY_ELLIPSE)
 SLICE_STYLES.append(STATE_MEASURE_DENSITY_POLYGON)
-
-VOLUME_STYLES = TOOL_STATES + [VOLUME_STATE_SEED, STATE_MEASURE_DISTANCE,
-        STATE_MEASURE_ANGLE]
-VOLUME_STYLES.append(STATE_DEFAULT)
-
 
 STYLE_LEVEL = {SLICE_STATE_EDITOR: 1,
                SLICE_STATE_WATERSHED: 1,
@@ -646,6 +656,8 @@ BOOLEAN_XOR = 4
 
 #------------ Navigation defaults -------------------
 
+MARKER_COLOUR = (1.0, 1.0, 0.)
+MARKER_SIZE = 2
 SELECT = 0
 MTC = 1
 FASTRAK = 2
@@ -733,3 +745,17 @@ COIL_COORD_THRESHOLD = 3
 TIMESTAMP = 2.0
 
 CAM_MODE = True
+
+# Tractography visualization
+N_TRACTS = 100
+PEEL_DEPTH = 5
+MAX_PEEL_DEPTH = 30
+SEED_OFFSET = 15
+SEED_RADIUS = 1.5
+SLEEP_NAVIGATION = 0.175
+BRAIN_OPACITY = 0.5
+N_CPU = psutil.cpu_count()
+TREKKER_CONFIG = {'seed_max': 1, 'step_size': 0.1, 'min_fod': 0.1, 'probe_quality': 3,
+                  'max_interval': 1, 'min_radius_curv': 0.8, 'probe_length': 0.4,
+                  'write_interval': 50, 'numb_threads': '', 'max_lenth': 200,
+                  'min_lenth': 20, 'max_sampling_step': 100}

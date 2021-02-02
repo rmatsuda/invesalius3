@@ -18,7 +18,7 @@
 #--------------------------------------------------------------------------
 import wx
 import wx.gizmos as gizmos
-from wx.lib.pubsub import pub as Publisher
+from pubsub import pub as Publisher
 import wx.lib.splitter as spl
 
 import invesalius.constants as const
@@ -104,7 +104,7 @@ class InnerPanel(wx.Panel):
 
         inner_sizer = wx.BoxSizer(wx.HORIZONTAL)
         inner_sizer.Add(btnsizer, 0, wx.LEFT|wx.TOP, 5)
-        inner_sizer.Add(self.combo_interval, 0, wx.LEFT|wx.RIGHT|wx.TOP, 5)
+        inner_sizer.Add(self.combo_interval, 0, wx.ALIGN_CENTER_VERTICAL|wx.LEFT|wx.RIGHT|wx.TOP, 5)
         panel.SetSizer(inner_sizer)
         inner_sizer.Fit(panel)
 
@@ -185,12 +185,9 @@ class InnerPanel(wx.Panel):
                 slice_amont = group.nslices
 
         nslices_result = slice_amont / (interval + 1)
-        if (nslices_result > 1):
-            Publisher.sendMessage('Open DICOM group', group=group,
-                                  interval=interval,
-                                  file_range=(self.first_image_selection, self.last_image_selection))
-        else:
-            dlg.MissingFilesForReconstruction()
+        Publisher.sendMessage('Open DICOM group', group=group,
+                              interval=interval,
+                              file_range=(self.first_image_selection, self.last_image_selection))
 
 class TextPanel(wx.Panel):
     def __init__(self, parent):

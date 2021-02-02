@@ -23,6 +23,7 @@ import re
 import locale
 import math
 import traceback
+import collections.abc
 
 from distutils.version import LooseVersion
 from functools import wraps
@@ -126,7 +127,16 @@ def next_copy_name(original_name, names_list):
         if not (next_copy in names_list):
             got_new_name = True
             return next_copy
-                
+
+
+def new_name_by_pattern(pattern):
+    from invesalius.project import Project
+    proj = Project()
+    mask_dict = proj.mask_dict
+    names_list = [i.name for i in mask_dict.values() if i.name.startswith(pattern + "_")]
+    count = len(names_list) + 1
+    return "{}_{}".format(pattern, count)
+
 
 def VerifyInvalidPListCharacter(text):
     #print text
@@ -478,3 +488,13 @@ def log_traceback(ex):
     tb_lines = [line.rstrip('\n') for line in
         traceback.format_exception(ex.__class__, ex, ex_traceback)]
     return ''.join(tb_lines)
+
+
+
+def deep_merge_dict(d, u):
+    for k, v in u.items():
+        if isinstance(v, collections.abc.Mapping):
+            d[k] = deep_merge_dict(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
