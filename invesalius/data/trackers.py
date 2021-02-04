@@ -18,6 +18,7 @@
 #--------------------------------------------------------------------------
 import invesalius.constants as const
 import invesalius.gui.dialogs as dlg
+import queue
 # TODO: Disconnect tracker when a new one is connected
 # TODO: Test if there are too many prints when connection fails
 # TODO: Redesign error messages. No point in having "Could not connect to default tracker" in all trackers
@@ -95,15 +96,22 @@ def PolarisTracker(tracker_id):
 
 def CameraTracker(tracker_id):
     trck_init = None
-    try:
-        import invesalius.data.camera_tracker as cam
-        trck_init = cam.camera()
-        trck_init.Initialize()
-        print('Connect to camera tracking device.')
+    #try:
+    import invesalius.data.camera_tracker as cam
+    import invesalius.data.coordinates as dco
+    import threading
+    event = threading.Event()
+    camera_queue = QueueCustom(maxsize=1)
 
-    except:
-        trck_init = None
-        print('Could not connect to default tracker.')
+    camera = cam.camera(camera_queue, event)
+    camera.start()
+    trck_init = dco.GetCameraCoord()
+    #trck_init.Initialize()
+    print('Connect to camera tracking device.')
+
+    #except:
+    #    trck_init = None
+    #    print('Could not connect to default tracker.')
 
     # return tracker initialization variable and type of connection
     return trck_init, 'wrapper'
@@ -296,3 +304,28 @@ def DisconnectTracker(tracker_id, trck_init):
             print('The tracker could not be disconnected.')
 
     return trck_init, lib_mode
+
+class QueueCustom(queue.Queue):
+    """
+    A custom queue subclass that provides a :meth:`clear` method.
+    https://stackoverflow.com/questions/6517953/clear-all-items-from-the-queue
+    Modified to a LIFO Queue type (Last-in-first-out). Seems to make sense for the navigation
+    threads, as the last added coordinate should be the first to be processed.
+    In the first tests in a short run, seems to increase the coord queue size considerably,
+    possibly limiting the queue size is good.
+    """
+
+    def clear(self):
+        """
+        Clears all items from the queue.
+        """
+
+        with self.mutex:
+            unfinished = self.unfinished_tasks - len(self.queue)
+            if unfinished <= 0:
+                if unfinished < 0:
+                    raise ValueError('task_done() called too many times')
+                self.all_tasks_done.notify_all()
+            self.unfinished_tasks = unfinished
+            self.queue.clear()
+            self.not_full.notify_all()

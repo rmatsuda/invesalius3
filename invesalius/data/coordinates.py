@@ -81,9 +81,9 @@ def PolarisCoord(trck_init, trck_id, ref_mode):
 
 def CameraCoord(trck_init, trck_id, ref_mode):
     trck = trck_init[0]
-    coord, probeID, refID = trck.Run()
-    Publisher.sendMessage('Sensors ID', probe_id=probeID, ref_id=refID)
-    return coord
+    coord = trck.Run()
+    Publisher.sendMessage('Sensors ID', probe_id=coord[1], ref_id=coord[2])
+    return coord[0]
 
 def ClaronCoord(trck_init, trck_id, ref_mode):
     trck = trck_init[0]
@@ -402,3 +402,20 @@ def offset_coordinate(p_old, norm_vec, offset):
     """
     p_offset = p_old - offset * norm_vec
     return p_offset
+
+
+class GetCameraCoord():
+    def __init__(self):
+        self.coord = None
+        self.__bind_events()
+
+    def __bind_events(self):
+        Publisher.subscribe(self.UpdateCameraTracker, 'Send camera coord')
+
+    def UpdateCameraTracker(self, coord):
+        self.coord = coord
+        #print(self.coord)
+
+    def Run(self):
+        return self.coord
+
