@@ -82,13 +82,14 @@ class camera(threading.Thread):
         self.parameters.cornerRefinementWinSize = 5
 
         #translate_tooltip = np.array([0, 0.21, 0])
-        self.translate_tooltip = np.array([0.059, 0.241, -0.005])
+        #self.translate_tooltip = np.array([0.059, 0.241, -0.005])
+        self.translate_tooltip = np.array([0.040, 0.251, -0.005])
 
-        markerLength = 0.05  #unit is meters.
+        markerLength = 0.03  #unit is meters.
         markerSeparation = 0.005  #unit is meters.
         #TODO: improve firstMarker numbers
-        self.board_probe = aruco.GridBoard_create(2, 1, markerLength, markerSeparation, self.aruco_dict, firstMarker = 0)
-        self.board_coil = aruco.GridBoard_create(2, 1, markerLength, markerSeparation, self.aruco_dict, firstMarker = 2)
+        self.board_probe = aruco.GridBoard_create(2, 2, markerLength, markerSeparation, self.aruco_dict, firstMarker = 0)
+        self.board_coil = aruco.GridBoard_create(2, 1, markerLength, markerSeparation, self.aruco_dict, firstMarker = 4)
 
         self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
@@ -145,7 +146,7 @@ class camera(threading.Thread):
                 ref_id = 0
 
             if np.all(ids != None):
-                if np.any(ids == 0) or np.any(ids == 1):
+                if np.any(ids == 0) or np.any(ids == 1) or np.any(ids == 2) or np.any(ids == 3):
                     retval, rvec, tvec = aruco.estimatePoseBoard(corners, ids, self.board_probe, self.cam_matrix,
                                                                  self.dist_coeffs, rvec=None, tvec=None)
                     tvec = np.float32(np.vstack(tvec))
@@ -185,7 +186,7 @@ class camera(threading.Thread):
                     self.probe = np.hstack([1000 * tool_tip_position, angles[:, 0]])
 
 
-                elif np.any(ids == 2) or np.any(ids == 3):
+                elif np.any(ids == 4) or np.any(ids == 5):
                     retval, rvec, tvec = aruco.estimatePoseBoard(corners, ids, self.board_coil, self.cam_matrix,
                                                                  self.dist_coeffs, rvec=None, tvec=None)
                     tvec = np.vstack(tvec)
