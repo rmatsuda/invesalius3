@@ -203,6 +203,8 @@ class Viewer(wx.Panel):
         self.actor_peel = None
         self.seed_offset = const.SEED_OFFSET
 
+        self.target_flag_state = False
+
     def __bind_events(self):
         Publisher.subscribe(self.LoadActor,
                                  'Load surface actor into viewer')
@@ -961,10 +963,14 @@ class Viewer(wx.Panel):
 
             if thrdist and thrcoordx and thrcoordy and thrcoordz:
                 self.dummy_coil_actor.GetProperty().SetDiffuseColor(vtk_colors.GetColor3d('Green'))
-                wx.CallAfter(Publisher.sendMessage, 'Coil at target', state=True)
+                target_state = True
             else:
                 self.dummy_coil_actor.GetProperty().SetDiffuseColor(vtk_colors.GetColor3d('DarkOrange'))
-                wx.CallAfter(Publisher.sendMessage, 'Coil at target', state=False)
+                target_state = False
+
+            if self.target_flag_state != target_state:
+                self.target_flag_state = target_state
+                wx.CallAfter(Publisher.sendMessage, 'Coil at target', state=target_state)
 
             self.arrow_actor_list = arrow_roll_x1, arrow_roll_x2, arrow_yaw_z1, arrow_yaw_z2, \
                                     arrow_pitch_y1, arrow_pitch_y2

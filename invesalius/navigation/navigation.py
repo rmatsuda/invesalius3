@@ -186,6 +186,7 @@ class Navigation():
 
     def CoilAtTarget(self, state):
         self.coil_at_target = state
+        self.object_at_target_queue.put_nowait(self.coil_at_target)
 
     def UpdateSleep(self, sleep):
         self.sleep_nav = sleep

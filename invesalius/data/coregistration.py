@@ -27,7 +27,8 @@ import invesalius.data.transformations as tr
 import invesalius.data.bases as bases
 import invesalius.data.coordinates as dco
 
-
+import csv
+import time
 # TODO: Replace the use of degrees by radians in every part of the navigation pipeline
 
 def object_marker_to_center(coord_raw, obj_ref_mode, t_obj_raw, s0_raw, r_s0_raw):
@@ -207,6 +208,15 @@ class CoordinateCorregistrate(threading.Thread):
             #
             self.target[1] = -self.target[1]
 
+        self.time_start = time.time()
+        self.fieldnames = ["time",
+                           "x_head_tracker_raw", "y_head_tracker_raw", "z_head_tracker_raw", "a_head_tracker_raw", "b_head_tracker_raw", "c_head_tracker_raw", "marker_head_flag",
+                           "x_coil_tracker_raw", "y_coil_tracker_raw", "z_coil_tracker_raw", "a_coil_tracker_raw", "b_coil_tracker_raw", "c_coil_tracker_raw", "marker_coil_flag",
+                           "x_nav", "y_nav", "z_nav", "a_nav", "b_nav", "c_nav", "object_at_target_flag"]
+        with open('data_tracker_raw.csv', 'w', newline='') as csv_file:
+            csv_writer = csv.DictWriter(csv_file, fieldnames=self.fieldnames, lineterminator='\r')
+            csv_writer.writeheader()
+
     def run(self):
         coreg_data = self.coreg_data
         view_obj = 1
@@ -262,6 +272,38 @@ class CoordinateCorregistrate(threading.Thread):
 
                 if not self.icp_queue.empty():
                     self.icp_queue.task_done()
+
+
+                with open('data_tracker_raw.csv', 'a', newline='') as csv_file:
+                    csv_writer = csv.DictWriter(csv_file, fieldnames=self.fieldnames)
+                    self.last_time = time.time()
+                    info = {
+                        "time": time.time() - self.time_start,
+                        "x_head_tracker_raw": coord_raw[1][0],
+                        "y_head_tracker_raw": coord_raw[1][1],
+                        "z_head_tracker_raw": coord_raw[1][2],
+                        "a_head_tracker_raw": coord_raw[1][3],
+                        "b_head_tracker_raw": coord_raw[1][4],
+                        "c_head_tracker_raw": coord_raw[1][5],
+                        "marker_head_flag": markers_flag[1],
+                        "x_coil_tracker_raw": coord_raw[2][0],
+                        "y_coil_tracker_raw": coord_raw[2][1],
+                        "z_coil_tracker_raw": coord_raw[2][2],
+                        "a_coil_tracker_raw": coord_raw[2][3],
+                        "b_coil_tracker_raw": coord_raw[2][4],
+                        "c_coil_tracker_raw": coord_raw[2][5],
+                        "marker_coil_flag": markers_flag[2],
+                        "x_nav": coord[0],
+                        "y_nav": coord[1],
+                        "z_nav": coord[2],
+                        "a_nav": coord[3],
+                        "b_nav": coord[4],
+                        "c_nav": coord[5],
+                        "object_at_target_flag": self.target_flag,
+                    }
+
+                    csv_writer.writerow(info)
+
                 # The sleep has to be in both threads
                 sleep(self.sle)
             except queue.Full:
