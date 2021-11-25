@@ -1242,6 +1242,14 @@ class MarkersPanel(wx.Panel):
 
         self.markers = []
         self.nav_status = False
+        ###### robot characterization ############
+        self.repositining_flag = False
+
+        self.flag_target = False
+
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.OnUpdateSendCoord, self.timer)
+        ##########################################
 
         self.marker_colour = const.MARKER_COLOUR
         self.marker_size = const.MARKER_SIZE
@@ -1339,6 +1347,7 @@ class MarkersPanel(wx.Panel):
         Publisher.subscribe(self.UpdateNavigationStatus, 'Navigation status')
         Publisher.subscribe(self.UpdateSeedCoordinates, 'Update tracts')
         Publisher.subscribe(self.OnChangeCurrentSession, 'Current session changed')
+        Publisher.subscribe(self.OnObjectTarget, 'Coil at target')
 
     def __find_target_marker(self):
         """
@@ -1348,7 +1357,7 @@ class MarkersPanel(wx.Panel):
         for i in range(len(self.markers)):
             if self.markers[i].is_target:
                 return i
-                
+
         return None
 
     def __get_selected_items(self):
@@ -1358,7 +1367,7 @@ class MarkersPanel(wx.Panel):
         selection = []
 
         next = self.lc.GetFirstSelected()
-               
+
         while next != -1:
             selection.append(next)
             next = self.lc.GetNextSelected(next)
@@ -1436,7 +1445,11 @@ class MarkersPanel(wx.Panel):
         menu_id.Bind(wx.EVT_MENU, self.OnMenuSetTarget, target_menu)
         menu_id.AppendSeparator()
         send_target_to_robot = menu_id.Append(3, _('Send target to robot'))
-        menu_id.Bind(wx.EVT_MENU, self.OnMenuSendTargetToRobot, send_target_to_robot)
+        if self.repositining_flag:
+            send_coord_function = self.OnContinuousSendCoord
+        else:
+            send_coord_function = self.OnMenuSendTargetToRobot
+        menu_id.Bind(wx.EVT_MENU, send_coord_function, send_target_to_robot)
 
         # Enable "Send target to robot" button only if tracker is robot, if navigation is on and if target is not none
         check_target_angles = np.all(self.markers[self.lc.GetFocusedItem()].coord[3:])
@@ -1494,15 +1507,27 @@ class MarkersPanel(wx.Panel):
 
             Publisher.sendMessage('Set new color', index=index, color=color_new)
 
+    def OnContinuousSendCoord(self, evt=None):
+        self.timer.Start(20000)
+
+    def OnUpdateSendCoord(self, evt):
+        self.OnMenuSendTargetToRobot(evt=None)
+
     def OnMenuSendTargetToRobot(self, evt):
         if isinstance(evt, int):
-           self.lc.Focus(evt)
+            self.lc.Focus(evt)
+        marker_index = self.lc.GetFocusedItem()
+        if self.repositining_flag:
+            if self.flag_target:
+                marker_index = 3
+            else:
+                marker_index = 4
 
         Publisher.sendMessage('Reset robot process', data=None)
         matrix_tracker_fiducials = self.tracker.GetMatrixTrackerFiducials()
         Publisher.sendMessage('Update tracker fiducials matrix',
                               matrix_tracker_fiducials=matrix_tracker_fiducials)
-        Publisher.sendMessage('Update robot target', robot_tracker_flag=True, target_index=self.lc.GetFocusedItem())
+        Publisher.sendMessage('Update robot target', robot_tracker_flag=True, target_index=marker_index)
 
     def OnDeleteAllMarkers(self, evt=None):
         if evt is not None:
@@ -1530,7 +1555,7 @@ class MarkersPanel(wx.Panel):
         # called through pubsub
         if not evt:
             index = []
-            
+
             if label and (label in self.__list_fiducial_labels()):
                 for id_n in range(self.lc.GetItemCount()):
                     item = self.lc.GetItem(id_n, const.LABEL_COLUMN)
@@ -1564,10 +1589,10 @@ class MarkersPanel(wx.Panel):
         file should not contain any fiducials already in the list."""
         filename = dlg.ShowLoadSaveDialog(message=_(u"Load markers"),
                                           wildcard=const.WILDCARD_MARKER_FILES)
-                
+
         if not filename:
             return
-        
+
         try:
             with open(filename, 'r') as file:
                 magick_line = file.readline()
@@ -1576,7 +1601,7 @@ class MarkersPanel(wx.Panel):
                 if ver != 0:
                     wx.MessageBox(_("Unknown version of the markers file."), _("InVesalius 3"))
                     return
-                
+
                 file.readline() # skip the header line
 
                 # Read the data lines and create markers
@@ -1595,7 +1620,7 @@ class MarkersPanel(wx.Panel):
                         self.__set_marker_as_target(len(self.markers) - 1)
 
         except:
-            wx.MessageBox(_("Invalid markers file."), _("InVesalius 3"))     
+            wx.MessageBox(_("Invalid markers file."), _("InVesalius 3"))
 
     def OnMarkersVisibility(self, evt, ctrl):
         if ctrl.GetValue():
@@ -1629,7 +1654,7 @@ class MarkersPanel(wx.Panel):
                 file.writelines('%s\n' % marker.to_string() for marker in self.markers)
                 file.close()
         except:
-            wx.MessageBox(_("Error writing markers file."), _("InVesalius 3"))  
+            wx.MessageBox(_("Error writing markers file."), _("InVesalius 3"))
 
     def OnSelectColour(self, evt, ctrl):
         # TODO: Make sure GetValue returns 3 numbers (without alpha)
@@ -1640,6 +1665,9 @@ class MarkersPanel(wx.Panel):
 
     def OnChangeCurrentSession(self, new_session_id):
         self.current_session = new_session_id
+
+    def OnObjectTarget(self, state):
+        self.flag_target = state
 
     def CreateMarker(self, coord=None, colour=None, size=None, label='*', is_target=False, seed=None, session_id=None):
         new_marker = self.Marker()
@@ -1660,9 +1688,9 @@ class MarkersPanel(wx.Panel):
 
         # Note that ball_id is zero-based, so we assign it len(self.markers) before the new marker is added
         Publisher.sendMessage('Add marker', ball_id=len(self.markers),
-                                            size=new_marker.size,
-                                            colour=new_marker.colour,
-                                            coord=new_marker.coord[:3])
+                              size=new_marker.size,
+                              colour=new_marker.colour,
+                              coord=new_marker.coord[:3])
         self.markers.append(new_marker)
 
         # Add item to list control in panel
