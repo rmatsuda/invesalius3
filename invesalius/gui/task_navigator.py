@@ -44,6 +44,7 @@ try:
 except ImportError:
     import wx.lib.foldpanelbar as fpb
 
+import wx.lib.scrolledpanel as scrolled
 import wx.lib.colourselect as csel
 import wx.lib.masked.numctrl
 from invesalius.pubsub import pub as Publisher
@@ -138,17 +139,132 @@ class FoldPanel(wx.Panel):
 
         inner_panel = InnerFoldPanel(self)
 
+        # Check box for camera update in volume rendering during navigation
+        tooltip = wx.ToolTip(_("Update camera in volume"))
+        checkcamera = wx.CheckBox(self, -1, _('Vol. camera'))
+        checkcamera.SetToolTip(tooltip)
+        checkcamera.SetValue(const.CAM_MODE)
+        checkcamera.Bind(wx.EVT_CHECKBOX, self.OnVolumeCamera)
+        self.checkcamera = checkcamera
+
+        # Check box to use serial port to trigger pulse signal and create markers
+        tooltip = wx.ToolTip(_("Enable serial port communication to trigger pulse and create markers"))
+        checkbox_serial_port = wx.CheckBox(self, -1, _('Serial port'))
+        checkbox_serial_port.SetToolTip(tooltip)
+        checkbox_serial_port.SetValue(False)
+        checkbox_serial_port.Bind(wx.EVT_CHECKBOX, partial(self.OnEnableSerialPort, ctrl=checkbox_serial_port))
+        self.checkbox_serial_port = checkbox_serial_port
+
+        # Check box for object position and orientation update in volume rendering during navigation
+        tooltip = wx.ToolTip(_("Show and track TMS coil"))
+        checkobj = wx.CheckBox(self, -1, _('Show coil'))
+        checkobj.SetToolTip(tooltip)
+        checkobj.SetValue(False)
+        checkobj.Disable()
+        checkobj.Bind(wx.EVT_CHECKBOX, self.OnShowObject)
+        self.checkobj = checkobj
+
+        #  if sys.platform != 'win32':
+        self.checkcamera.SetWindowVariant(wx.WINDOW_VARIANT_SMALL)
+        checkbox_serial_port.SetWindowVariant(wx.WINDOW_VARIANT_SMALL)
+        checkobj.SetWindowVariant(wx.WINDOW_VARIANT_SMALL)
+
+        self.track_obj = False
+
+        line_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        line_sizer.Add(checkcamera, 0, wx.ALIGN_LEFT | wx.RIGHT | wx.LEFT, 5)
+        line_sizer.Add(checkbox_serial_port, 0)
+        line_sizer.Add(checkobj, 0, wx.RIGHT | wx.LEFT, 5)
+        line_sizer.Fit(self)
+
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(inner_panel, 0, wx.EXPAND|wx.GROW)
+        sizer.Add(line_sizer, 0, wx.EXPAND|wx.GROW)
         sizer.Fit(self)
 
-        self.SetSizerAndFit(sizer)
+        self.SetSizer(sizer)
         self.Update()
         self.SetAutoLayout(1)
 
+        if wx.GetDisplaySize()[1] <= 800:
+            sizeNeeded = 260
+        else:
+            sizeNeeded = 350
 
-class InnerFoldPanel(wx.Panel):
+        inner_panel.SetMinSize((10, sizeNeeded))
+        inner_panel.SetSize((10, sizeNeeded))
+
+        self.__bind_events()
+
+    def __bind_events(self):
+        Publisher.subscribe(self.OnCheckStatus, 'Navigation status')
+        Publisher.subscribe(self.OnShowObject, 'Update track object state')
+        Publisher.subscribe(self.OnVolumeCamera, 'Change camera checkbox')
+
+    def OnCheckStatus(self, nav_status, vis_status):
+        if nav_status:
+            self.checkbox_serial_port.Enable(False)
+            self.checkobj.Enable(False)
+        else:
+            self.checkbox_serial_port.Enable(True)
+            if self.track_obj:
+                self.checkobj.Enable(True)
+
+    def OnEnableSerialPort(self, evt, ctrl):
+        if ctrl.GetValue():
+            from wx import ID_OK
+            dlg_port = dlg.SetCOMPort(select_baud_rate=False)
+
+            if dlg_port.ShowModal() != ID_OK:
+                ctrl.SetValue(False)
+                return
+
+            com_port = dlg_port.GetCOMPort()
+            baud_rate = 115200
+
+            Publisher.sendMessage('Update serial port', serial_port_in_use=True, com_port=com_port, baud_rate=baud_rate)
+        else:
+            Publisher.sendMessage('Update serial port', serial_port_in_use=False)
+
+    def OnShowObject(self, evt=None, flag=None, obj_name=None, polydata=None, use_default_object=True):
+        if not evt:
+            if flag:
+                self.checkobj.Enable(True)
+                self.checkobj.SetValue(True)
+                self.track_obj = True
+                Publisher.sendMessage('Status target button', status=True)
+            else:
+                self.checkobj.Enable(False)
+                self.checkobj.SetValue(False)
+                self.track_obj = False
+                Publisher.sendMessage('Status target button', status=False)
+
+        Publisher.sendMessage('Update show object state', state=self.checkobj.GetValue())
+
+    def OnVolumeCamera(self, evt=None, status=None):
+        if not evt:
+            self.checkcamera.SetValue(status)
+        Publisher.sendMessage('Update volume camera state', camera_state=self.checkcamera.GetValue())
+
+
+class InnerFoldPanel(scrolled.ScrolledPanel):
     def __init__(self, parent):
+        scrolled.ScrolledPanel.__init__(self, parent)
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        inner_nav_panel = InnerNavFoldPanel(self, sizer)
+
+        # Panel sizer to expand fold panel
+        sizer.Add(inner_nav_panel, 1, wx.GROW | wx.EXPAND)
+
+        self.SetSizer(sizer)
+        self.Update()
+        self.SetupScrolling()
+
+
+class InnerNavFoldPanel(wx.Panel):
+    def __init__(self, parent, sizer):
         wx.Panel.__init__(self, parent)
         try:
             default_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_MENUBAR)
@@ -212,7 +328,7 @@ class InnerFoldPanel(wx.Panel):
         mtw = MarkersPanel(item, navigation, tracker, icp)
 
         fold_panel.ApplyCaptionStyle(item, style)
-        fold_panel.AddFoldPanelWindow(item, mtw, spacing= 0,
+        fold_panel.AddFoldPanelWindow(item, mtw, spacing=0,
                                       leftSpacing=0, rightSpacing=0)
 
         # Fold 4 - Tractography panel
@@ -229,7 +345,7 @@ class InnerFoldPanel(wx.Panel):
         dtw = DbsPanel(self.dbs_item) #Atribuir nova var, criar panel
 
         fold_panel.ApplyCaptionStyle(self.dbs_item, style)
-        fold_panel.AddFoldPanelWindow(self.dbs_item, dtw, spacing= 0,
+        fold_panel.AddFoldPanelWindow(self.dbs_item, dtw, spacing=0,
                                       leftSpacing=0, rightSpacing=0)
         self.dbs_item.Hide()
 
@@ -237,61 +353,17 @@ class InnerFoldPanel(wx.Panel):
         item = fold_panel.AddFoldPanel(_("Sessions"), collapsed=False)
         stw = SessionPanel(item)
         fold_panel.ApplyCaptionStyle(item, style)
-        fold_panel.AddFoldPanelWindow(item, stw, spacing= 0,
+        fold_panel.AddFoldPanelWindow(item, stw, spacing=0,
                                       leftSpacing=0, rightSpacing=0)
 
-        # Check box for camera update in volume rendering during navigation
-        tooltip = wx.ToolTip(_("Update camera in volume"))
-        checkcamera = wx.CheckBox(self, -1, _('Vol. camera'))
-        checkcamera.SetToolTip(tooltip)
-        checkcamera.SetValue(const.CAM_MODE)
-        checkcamera.Bind(wx.EVT_CHECKBOX, self.OnVolumeCamera)
-        self.checkcamera = checkcamera
-
-        # Check box to use serial port to trigger pulse signal and create markers
-        tooltip = wx.ToolTip(_("Enable serial port communication to trigger pulse and create markers"))
-        checkbox_serial_port = wx.CheckBox(self, -1, _('Serial port'))
-        checkbox_serial_port.SetToolTip(tooltip)
-        checkbox_serial_port.SetValue(False)
-        checkbox_serial_port.Bind(wx.EVT_CHECKBOX, partial(self.OnEnableSerialPort, ctrl=checkbox_serial_port))
-        self.checkbox_serial_port = checkbox_serial_port
-
-        # Check box for object position and orientation update in volume rendering during navigation
-        tooltip = wx.ToolTip(_("Show and track TMS coil"))
-        checkobj = wx.CheckBox(self, -1, _('Show coil'))
-        checkobj.SetToolTip(tooltip)
-        checkobj.SetValue(False)
-        checkobj.Disable()
-        checkobj.Bind(wx.EVT_CHECKBOX, self.OnShowObject)
-        self.checkobj = checkobj
-
-        #  if sys.platform != 'win32':
-        self.checkcamera.SetWindowVariant(wx.WINDOW_VARIANT_SMALL)
-        checkbox_serial_port.SetWindowVariant(wx.WINDOW_VARIANT_SMALL)
-        checkobj.SetWindowVariant(wx.WINDOW_VARIANT_SMALL)
-
-        line_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        line_sizer.Add(checkcamera, 0, wx.ALIGN_LEFT | wx.RIGHT | wx.LEFT, 5)
-        line_sizer.Add(checkbox_serial_port, 0, wx.ALIGN_CENTER)
-        line_sizer.Add(checkobj, 0, wx.RIGHT | wx.LEFT, 5)
-        line_sizer.Fit(self)
-
-        # Panel sizer to expand fold panel
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(fold_panel, 0, wx.GROW|wx.EXPAND)
-        sizer.Add(line_sizer, 1, wx.GROW | wx.EXPAND)
+        sizer.Add(fold_panel, 0, wx.GROW | wx.EXPAND)
         sizer.Fit(self)
-
-        self.track_obj = False
-
         self.SetSizer(sizer)
         self.Update()
         self.SetAutoLayout(1)
-        
+
     def __bind_events(self):
-        Publisher.subscribe(self.OnCheckStatus, 'Navigation status')
-        Publisher.subscribe(self.OnShowObject, 'Update track object state')
-        Publisher.subscribe(self.OnVolumeCamera, 'Change camera checkbox')
         Publisher.subscribe(self.OnShowDbs, "Active dbs folder")
         Publisher.subscribe(self.OnHideDbs, "Deactive dbs folder")
 
@@ -300,52 +372,6 @@ class InnerFoldPanel(wx.Panel):
 
     def OnHideDbs(self):
         self.dbs_item.Hide()
-
-    def OnCheckStatus(self, nav_status, vis_status):
-        if nav_status:
-            self.checkbox_serial_port.Enable(False)
-            self.checkobj.Enable(False)
-        else:
-            self.checkbox_serial_port.Enable(True)
-            if self.track_obj:
-                self.checkobj.Enable(True)
-
-    def OnEnableSerialPort(self, evt, ctrl):
-        if ctrl.GetValue():
-            from wx import ID_OK
-            dlg_port = dlg.SetCOMPort(select_baud_rate=False)
-
-            if dlg_port.ShowModal() != ID_OK:
-                ctrl.SetValue(False)
-                return
-
-            com_port = dlg_port.GetCOMPort()
-            baud_rate = 115200
-
-            Publisher.sendMessage('Update serial port', serial_port_in_use=True, com_port=com_port, baud_rate=baud_rate)
-        else:
-            Publisher.sendMessage('Update serial port', serial_port_in_use=False)
-
-    def OnShowObject(self, evt=None, flag=None, obj_name=None, polydata=None, use_default_object=True):
-        if not evt:
-            if flag:
-                self.checkobj.Enable(True)
-                self.checkobj.SetValue(True)
-                self.track_obj = True
-                Publisher.sendMessage('Status target button', status=True)
-            else:
-                self.checkobj.Enable(False)
-                self.checkobj.SetValue(False)
-                self.track_obj = False
-                Publisher.sendMessage('Status target button', status=False)
-
-        Publisher.sendMessage('Update show object state', state=self.checkobj.GetValue())
-
-    def OnVolumeCamera(self, evt=None, status=None):
-        if not evt:
-            self.checkcamera.SetValue(status)
-        Publisher.sendMessage('Update volume camera state', camera_state=self.checkcamera.GetValue())
-
 
 class NeuronavigationPanel(wx.Panel):
     def __init__(self, parent, navigation, tracker, icp, pedal_connection, neuronavigation_api):
@@ -378,7 +404,7 @@ class NeuronavigationPanel(wx.Panel):
 
         # ComboBox for spatial tracker device selection
         tracker_options = [_("Select tracker:")] + self.tracker.get_trackers()
-        select_tracker_elem = wx.ComboBox(self, -1, "", size=(145, -1),
+        select_tracker_elem = wx.ComboBox(self, -1, "", size=(140, -1),
                                           choices=tracker_options, style=wx.CB_DROPDOWN|wx.CB_READONLY)
 
         tooltip = wx.ToolTip(_("Choose the tracking device"))
@@ -390,7 +416,7 @@ class NeuronavigationPanel(wx.Panel):
 
         # ComboBox for tracker reference mode
         tooltip = wx.ToolTip(_("Choose the navigation reference mode"))
-        choice_ref = wx.ComboBox(self, -1, "",
+        choice_ref = wx.ComboBox(self, -1, "", size=(75, -1),
                                  choices=const.REF_MODE, style=wx.CB_DROPDOWN|wx.CB_READONLY)
         choice_ref.SetSelection(const.DEFAULT_REF_MODE)
         choice_ref.SetToolTip(tooltip)
@@ -428,7 +454,7 @@ class NeuronavigationPanel(wx.Panel):
         # Fiducial registration error text and checkbox
         txt_fre = wx.StaticText(self, -1, _('FRE:'))
         tooltip = wx.ToolTip(_("Fiducial registration error"))
-        txtctrl_fre = wx.TextCtrl(self, value="", size=wx.Size(60, -1), style=wx.TE_CENTRE)
+        txtctrl_fre = wx.TextCtrl(self, value="", size=wx.Size(55, -1), style=wx.TE_CENTRE)
         txtctrl_fre.SetFont(wx.Font(9, wx.DEFAULT, wx.NORMAL, wx.BOLD))
         txtctrl_fre.SetBackgroundColour('WHITE')
         txtctrl_fre.SetEditable(0)
