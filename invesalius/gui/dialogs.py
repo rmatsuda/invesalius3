@@ -62,6 +62,7 @@ import invesalius.session as ses
 import invesalius.utils as utils
 import invesalius.data.vtk_utils as vtku
 import invesalius.data.coregistration as dcr
+import invesalius.data.coordinates as dco
 from invesalius.gui.widgets.inv_spinctrl import InvSpinCtrl, InvFloatSpinCtrl
 from invesalius.gui.widgets import clut_imagedata
 from invesalius.gui.widgets.clut_imagedata import CLUTImageDataWidget, EVT_CLUT_NODE_CHANGED
@@ -4410,6 +4411,217 @@ class SetRobotIP(wx.Dialog):
 
     def GetValue(self):
         return self.robot_ip
+
+
+class CreateTransformationMatrix(wx.Dialog):
+    def __init__(self, tracker, title=_("Create transformation matrix from camera to tracker space")):
+        wx.Dialog.__init__(self, wx.GetApp().GetTopWindow(), -1, title, #size=wx.Size(1000, 200),
+                           style=wx.DEFAULT_DIALOG_STYLE|wx.FRAME_FLOAT_ON_PARENT|wx.STAY_ON_TOP|wx.RESIZE_BORDER)
+        '''
+        M_robot_2_tracker is created by an affine transformation. Robot TCP should be calibrated to the center of the tracker marker
+        '''
+        #TODO: make aboutbox
+        self.matrix_camera_to_tracker = []
+        self.camera_coord_list = np.zeros((4, 4))[np.newaxis]
+        self.tracker_coord_list = np.zeros((4, 4))[np.newaxis]
+
+        self.tracker = tracker
+
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.OnUpdate, self.timer)
+
+        self._init_gui()
+
+    def _init_gui(self):
+        # Buttons to acquire and remove points
+        txt_acquisition = wx.StaticText(self, -1, _('Poses acquisition for camera registration:'))
+
+        btn_create_point = wx.Button(self, -1, label=_('Single'))
+        btn_create_point.Bind(wx.EVT_BUTTON, self.OnCreatePoint)
+
+        btn_cont_point = wx.ToggleButton(self, -1, label=_('Continuous'))
+        btn_cont_point.Bind(wx.EVT_TOGGLEBUTTON, partial(self.OnContinuousAcquisition, btn=btn_cont_point))
+        self.btn_cont_point = btn_cont_point
+
+        txt_number = wx.StaticText(self, -1, _('0'))
+        txt_recorded = wx.StaticText(self, -1, _('Poses recorded'))
+        self.txt_number = txt_number
+
+        btn_reset = wx.Button(self, -1, label=_('Reset'))
+        btn_reset.Bind(wx.EVT_BUTTON, self.OnReset)
+
+        btn_apply_reg = wx.Button(self, -1, label=_('Apply'))
+        btn_apply_reg.Bind(wx.EVT_BUTTON, self.OnApply)
+        btn_apply_reg.Enable(False)
+        self.btn_apply_reg = btn_apply_reg
+
+        # Buttons to save and load
+        txt_file = wx.StaticText(self, -1, _('Registration file'))
+
+        btn_save = wx.Button(self, -1, label=_('Save'), size=wx.Size(65, 23))
+        btn_save.Bind(wx.EVT_BUTTON, self.OnSaveReg)
+        btn_save.Enable(False)
+        self.btn_save = btn_save
+
+        btn_load = wx.Button(self, -1, label=_('Load'), size=wx.Size(65, 23))
+        btn_load.Bind(wx.EVT_BUTTON, self.OnLoadReg)
+        btn_load.Enable(False)
+        self.btn_load = btn_load
+
+        # Create a horizontal sizers
+        border = 1
+        acquisition = wx.BoxSizer(wx.HORIZONTAL)
+        acquisition.AddMany([(btn_create_point, 1, wx.EXPAND | wx.GROW | wx.TOP | wx.RIGHT | wx.LEFT, border),
+                             (btn_cont_point, 1, wx.ALL | wx.EXPAND | wx.GROW, border)])
+
+        txt_pose = wx.BoxSizer(wx.HORIZONTAL)
+        txt_pose.AddMany([(txt_number, 1,  wx.LEFT, 50),
+                          (txt_recorded, 1, wx.LEFT, border)])
+
+        apply_reset = wx.BoxSizer(wx.HORIZONTAL)
+        apply_reset.AddMany([(btn_reset, 1, wx.EXPAND | wx.GROW | wx.TOP | wx.RIGHT | wx.LEFT, border),
+                             (btn_apply_reg, 1, wx.ALL | wx.EXPAND | wx.GROW, border)])
+
+        save_load = wx.BoxSizer(wx.HORIZONTAL)
+        save_load.AddMany([(btn_save, 1, wx.EXPAND | wx.GROW | wx.TOP | wx.RIGHT | wx.LEFT, border),
+                           (btn_load, 1, wx.ALL | wx.EXPAND | wx.GROW, border)])
+
+        btn_ok = wx.Button(self, wx.ID_OK)
+        btn_ok.SetHelpText("")
+        btn_ok.SetDefault()
+        btn_ok.Enable(False)
+        self.btn_ok = btn_ok
+
+        btn_cancel = wx.Button(self, wx.ID_CANCEL)
+        btn_cancel.SetHelpText("")
+
+        btnsizer = wx.StdDialogButtonSizer()
+        btnsizer.AddButton(btn_ok)
+        btnsizer.AddButton(btn_cancel)
+        btnsizer.Realize()
+
+        # Add line sizers into main sizer
+        border = 10
+        border_last = 10
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        main_sizer.Add(wx.StaticLine(self, -1), 0, wx.EXPAND | wx.TOP | wx.BOTTOM, border)
+        main_sizer.Add(txt_acquisition, 0, wx.BOTTOM |  wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_HORIZONTAL , border)
+        main_sizer.Add(acquisition, 0, wx.GROW | wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, border)
+        main_sizer.Add(txt_pose, 0,  wx.ALIGN_CENTER_HORIZONTAL | wx.TOP | wx.BOTTOM, border)
+        main_sizer.Add(apply_reset, 0, wx.GROW | wx.EXPAND | wx.LEFT | wx.RIGHT , border_last)
+        main_sizer.Add(wx.StaticLine(self, -1), 0, wx.EXPAND | wx.TOP | wx.BOTTOM, border)
+        main_sizer.Add(txt_file, 0, wx.GROW | wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, border/2)
+        main_sizer.Add(save_load, 0, wx.GROW | wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, border)
+        main_sizer.Add(wx.StaticLine(self, -1), 0, wx.EXPAND | wx.TOP | wx.BOTTOM, border)
+        main_sizer.Add(btnsizer, 0, wx.GROW | wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, border)
+        main_sizer.Fit(self)
+
+        self.SetSizer(main_sizer)
+        self.Update()
+        main_sizer.Fit(self)
+
+        self.CenterOnParent()
+
+    def OnContinuousAcquisition(self, evt=None, btn=None):
+        value = btn.GetValue()
+        if value:
+            self.timer.Start(100)
+        else:
+            self.timer.Stop()
+
+    def OnUpdate(self, evt):
+        self.OnCreatePoint(evt=None)
+
+    def OnCreatePoint(self, evt):
+        coord_raw, markers_flag = self.tracker.TrackerCoordinates.GetCoordinates()
+        coord_head_tracker = coord_raw[1]
+        markers_flag_head_tracker = markers_flag[3]
+        coord_head_camera = coord_raw[4]
+        markers_flag_camera_tracker = markers_flag[1]
+
+        if markers_flag_head_tracker and markers_flag_camera_tracker:
+            new_camera_coord_list = dco.coordinates_to_transformation_matrix(
+                position=coord_head_tracker[:3],
+                orientation=coord_head_tracker[3:],
+                axes='rzyx',
+            )
+            new_tracker_coord_list = np.array(dco.coordinates_to_transformation_matrix(
+                position=coord_head_camera[:3],
+                orientation=coord_head_camera[3:],
+                axes='rzyx',
+            ))
+
+            self.camera_coord_list = np.vstack([self.camera_coord_list.copy(), new_camera_coord_list[np.newaxis]])
+            self.tracker_coord_list = np.vstack([self.tracker_coord_list.copy(), new_tracker_coord_list[np.newaxis]])
+            self.OnCoordinatesAdquired()
+
+        else:
+            print('Cannot collect the head markers, please try again')
+
+    def OnCoordinatesAdquired(self):
+        self.txt_number.SetLabel(str(int(self.txt_number.GetLabel())+1))
+
+        if int(self.txt_number.GetLabel()) >= 3:
+            self.btn_apply_reg.Enable(True)
+
+    def OnReset(self, evt):
+        if self.btn_cont_point:
+            self.btn_cont_point.SetValue(False)
+            self.OnContinuousAcquisition(evt=None, btn=self.btn_cont_point)
+
+        self.txt_number.SetLabel('0')
+
+        self.btn_apply_reg.Enable(False)
+        self.btn_save.Enable(False)
+        self.btn_ok.Enable(False)
+
+        self.matrix_camera_to_tracker = []
+
+    def OnApply(self, evt):
+        if self.btn_cont_point:
+            self.btn_cont_point.SetValue(False)
+            self.OnContinuousAcquisition(evt=None, btn=self.btn_cont_point)
+        try:
+            robot_coord_list = np.stack(self.camera_coord_list[1:], axis=2)
+            coord_coil_list = np.stack(self.tracker_coord_list[1:], axis=2)
+            X_est, Y_est, Y_est_check, ErrorStats = self.tracker.trk_init[0][1].matrices_estimation(
+                robot_coord_list, coord_coil_list)
+            self.matrix_camera_to_tracker = X_est, Y_est
+
+            self.btn_save.Enable(True)
+            self.btn_ok.Enable(True)
+
+        except np.linalg.LinAlgError:
+            print("numpy.linalg.LinAlgError")
+            print("Try a new acquisition")
+
+    def OnSaveReg(self, evt):
+        filename = ShowLoadSaveDialog(message=_(u"Save camera transformation file as..."),
+                                          wildcard=_("Camera transformation files (*.cmtf)|*.cmtf"),
+                                          style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+                                          default_filename="cameratransform.cmtf", save_ext="cmtf")
+
+        if filename:
+            if self.matrix_camera_to_tracker is not None:
+                with open(filename, 'w', newline='') as file:
+                    writer = csv.writer(file, delimiter='\t')
+                    writer.writerows(np.vstack(self.matrix_camera_to_tracker).tolist())
+
+    def OnLoadReg(self, evt):
+        filename = ShowLoadSaveDialog(message=_(u"Load camera transformation"),
+                                          wildcard=_("Camera transformation files (*.cmtf)|*.cmtf"))
+        if filename:
+            with open(filename, 'r') as file:
+                reader = csv.reader(file, delimiter='\t')
+                content = [row for row in reader]
+
+            self.matrix_camera_to_tracker = np.vstack(list(np.float_(content)))
+            print("Matrix camera to tracker:", self.matrix_camera_to_tracker)
+            Publisher.sendMessage('Load camera transformation matrix', data=self.matrix_camera_to_tracker.tolist())
+
+    def GetValue(self):
+        return self.matrix_camera_to_tracker
+
 
 class CreateTransformationMatrixRobot(wx.Dialog):
     def __init__(self, tracker, title=_("Create transformation matrix to robot space")):

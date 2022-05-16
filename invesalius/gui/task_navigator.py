@@ -701,6 +701,16 @@ class NeuronavigationPanel(wx.Panel):
                 Publisher.sendMessage('Disconnect tracker')
                 wx.MessageBox(_("Not possible to connect to the robot."), _("InVesalius 3"))
 
+        if self.tracker.tracker_id == const.CAMERA:
+            dlg_correg_camera = dlg.CreateTransformationMatrix(self.tracker)
+            if dlg_correg_camera.ShowModal() == wx.ID_OK:
+                self.tracker.trk_init[0][1].SetCameraToTrackerMatrix(dlg_correg_camera.GetValue())
+            else:
+                Publisher.sendMessage('Disconnect tracker')
+                wx.MessageBox(_("Not possible to connect to the camera."), _("InVesalius 3"))
+
+            dlg_correg_camera.Destroy()
+
         self.ResetICP()
         self.tracker.UpdateUI(ctrl, self.numctrls_fiducial[3:6], self.txtctrl_fre)
 

@@ -120,16 +120,25 @@ def PolhemusTracker(tracker_id):
 def CameraTracker(tracker_id):
     trck_init = None
     try:
-        import invesalius.data.camera_tracker as cam
-        trck_init = cam.camera()
-        trck_init.Initialize()
-        print('Connect to camera tracking device.')
+        from cameratracker import cameratracker as cam
+        from wx import ID_OK
 
+        dlg_device = dlg.SetTrackerDeviceToRobot()
+        if dlg_device.ShowModal() == ID_OK:
+            tracker_id = dlg_device.GetValue()
+            if tracker_id:
+                trck_init = TrackerConnection(tracker_id, None, 'connect')
+                if trck_init[0]:
+                    trck_init_cam = cam.camera()
+                    trck_init_cam.Initialize()
+                    print('Connect to camera tracking device.')
+
+                    return [trck_init, trck_init_cam], tracker_id
     except:
         print('Could not connect to camera tracker.')
 
     # return tracker initialization variable and type of connection
-    return trck_init, 'wrapper'
+    return None, None
 
 def PolarisTracker(tracker_id):
     from wx import ID_OK
