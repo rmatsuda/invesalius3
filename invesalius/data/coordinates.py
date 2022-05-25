@@ -208,7 +208,7 @@ def CameraCoord(trck_init, trck_id, ref_mode):
     coord_tracker, markers_flag = GetCoordinatesForThread(tracker_init, tracker_id, ref_mode)
 
     coord, probeID, refID, coilID = camera_tracker.Run()
-
+    print(coord[1], coord_tracker[1])
     return np.vstack([coord[0], coord[1], coord[2], coord_tracker[0], coord_tracker[1], coord_tracker[2]]), \
            [markers_flag[0],  refID, markers_flag[2], markers_flag[1]]
 

@@ -4541,13 +4541,13 @@ class CreateTransformationMatrix(wx.Dialog):
 
         if markers_flag_head_tracker and markers_flag_camera_tracker:
             new_camera_coord_list = dco.coordinates_to_transformation_matrix(
-                position=coord_head_tracker[:3],
-                orientation=coord_head_tracker[3:],
+                position=coord_head_camera[:3],
+                orientation=coord_head_camera[3:],
                 axes='rzyx',
             )
             new_tracker_coord_list = np.array(dco.coordinates_to_transformation_matrix(
-                position=coord_head_camera[:3],
-                orientation=coord_head_camera[3:],
+                position=coord_head_tracker[:3],
+                orientation=coord_head_tracker[3:],
                 axes='rzyx',
             ))
 
@@ -4582,10 +4582,10 @@ class CreateTransformationMatrix(wx.Dialog):
             self.btn_cont_point.SetValue(False)
             self.OnContinuousAcquisition(evt=None, btn=self.btn_cont_point)
         try:
-            robot_coord_list = np.stack(self.camera_coord_list[1:], axis=2)
+            camera_coord_list = np.stack(self.camera_coord_list[1:], axis=2)
             coord_coil_list = np.stack(self.tracker_coord_list[1:], axis=2)
             X_est, Y_est, Y_est_check, ErrorStats = self.tracker.trk_init[0][1].matrices_estimation(
-                robot_coord_list, coord_coil_list)
+                camera_coord_list, coord_coil_list)
             self.matrix_camera_to_tracker = X_est, Y_est
 
             self.btn_save.Enable(True)
