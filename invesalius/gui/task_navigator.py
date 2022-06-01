@@ -1396,6 +1396,7 @@ class MarkersPanel(wx.Panel):
         Publisher.subscribe(self.UpdateNavigationStatus, 'Navigation status')
         Publisher.subscribe(self.UpdateSeedCoordinates, 'Update tracts')
         Publisher.subscribe(self.OnChangeCurrentSession, 'Current session changed')
+        Publisher.subscribe(self.OnSetTarget, 'Define target')
 
     def __find_target_marker(self):
         """
@@ -1533,6 +1534,10 @@ class MarkersPanel(wx.Panel):
             self.lc.SetItem(list_index, const.LABEL_COLUMN, new_label)
         else:
             wx.MessageBox(_("No data selected."), _("InVesalius 3"))
+
+    def OnSetTarget(self):
+        self.lc.Focus(len(self.markers)-1)
+        self.OnMenuSetTarget(evt=None)
 
     def OnMenuSetTarget(self, evt):
         idx = self.lc.GetFocusedItem()

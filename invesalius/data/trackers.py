@@ -376,27 +376,33 @@ def DisconnectTracker(tracker_id, trck_init):
         lib_mode = 'debug'
         print('Debug tracker disconnected.')
     else:
-        try:
-            if tracker_id == const.ISOTRAKII:
-                trck_init.close()
-                trck_init = False
-                lib_mode = 'serial'
-                print('Tracker disconnected.')
-            elif tracker_id == const.ROBOT:
-                Publisher.sendMessage('Reset robot', data=None)
-                if trck_init[1] == const.DEBUGTRACKRANDOM or trck_init[1] == const.DEBUGTRACKAPPROACH:
-                    trck_init[0].Close()
-                trck_init = False
-                lib_mode = 'wrapper'
-                print('Tracker disconnected.')
-            else:
-                trck_init.Close()
-                trck_init = False
-                lib_mode = 'wrapper'
-                print('Tracker disconnected.')
-        except:
-            trck_init = True
-            lib_mode = 'error'
-            print('The tracker could not be disconnected.')
+       # try:
+        if tracker_id == const.ISOTRAKII:
+            trck_init.close()
+            trck_init = False
+            lib_mode = 'serial'
+            print('Tracker disconnected.')
+        elif tracker_id == const.ROBOT:
+            Publisher.sendMessage('Reset robot', data=None)
+            if trck_init[1] == const.DEBUGTRACKRANDOM or trck_init[1] == const.DEBUGTRACKAPPROACH:
+                trck_init[0].Close()
+            trck_init = False
+            lib_mode = 'wrapper'
+            print('Tracker disconnected.')
+        elif tracker_id == const.CAMERA:
+            trck_init[0][0].Close()
+            trck_init[1].Close()
+            trck_init = False
+            lib_mode = 'wrapper'
+            print('Tracker disconnected.')
+        else:
+            trck_init.Close()
+            trck_init = False
+            lib_mode = 'wrapper'
+            print('Tracker disconnected.')
+        #except:
+        #    trck_init = True
+        #    lib_mode = 'error'
+        #    print('The tracker could not be disconnected.')
 
     return trck_init, lib_mode
