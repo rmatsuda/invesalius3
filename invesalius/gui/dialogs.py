@@ -4422,8 +4422,10 @@ class CreateTransformationMatrix(wx.Dialog):
         '''
         #TODO: make aboutbox
         self.matrix_camera_to_tracker = []
-        self.camera_coord_list = np.zeros((4, 4))[np.newaxis]
-        self.tracker_coord_list = np.zeros((4, 4))[np.newaxis]
+        self.camera_coord_matrix_list = np.zeros((4, 4))[np.newaxis]
+        self.tracker_coord_matrix_list = np.zeros((4, 4))[np.newaxis]
+        self.camera_coord_list = []
+        self.tracker_coord_list = []
 
         self.tracker = tracker
 
@@ -4534,9 +4536,9 @@ class CreateTransformationMatrix(wx.Dialog):
 
     def OnCreatePoint(self, evt):
         coord_raw, markers_flag = self.tracker.TrackerCoordinates.GetCoordinates()
-        coord_head_tracker = coord_raw[1]
+        coord_head_tracker = coord_raw[3]
         markers_flag_head_tracker = markers_flag[3]
-        coord_head_camera = coord_raw[4]
+        coord_head_camera = coord_raw[1]
         markers_flag_camera_tracker = markers_flag[1]
 
         if markers_flag_head_tracker and markers_flag_camera_tracker:
@@ -4551,8 +4553,10 @@ class CreateTransformationMatrix(wx.Dialog):
                 axes='rzyx',
             ))
 
-            self.camera_coord_list = np.vstack([self.camera_coord_list.copy(), new_camera_coord_list[np.newaxis]])
-            self.tracker_coord_list = np.vstack([self.tracker_coord_list.copy(), new_tracker_coord_list[np.newaxis]])
+            self.camera_coord_matrix_list = np.vstack([self.camera_coord_matrix_list.copy(), new_camera_coord_list[np.newaxis]])
+            self.tracker_coord_matrix_list = np.vstack([self.tracker_coord_matrix_list.copy(), new_tracker_coord_list[np.newaxis]])
+            self.camera_coord_list.append(coord_head_camera[:3])
+            self.tracker_coord_list.append(coord_head_tracker[:3])
             self.OnCoordinatesAdquired()
 
         else:
@@ -4582,11 +4586,16 @@ class CreateTransformationMatrix(wx.Dialog):
             self.btn_cont_point.SetValue(False)
             self.OnContinuousAcquisition(evt=None, btn=self.btn_cont_point)
         try:
-            camera_coord_list = np.stack(self.camera_coord_list[1:], axis=2)
-            coord_coil_list = np.stack(self.tracker_coord_list[1:], axis=2)
+            camera_coord_list = np.stack(self.camera_coord_matrix_list[1:], axis=2)
+            coord_coil_list = np.stack(self.tracker_coord_matrix_list[1:], axis=2)
             X_est, Y_est, Y_est_check, ErrorStats = self.tracker.trk_init[0][1].matrices_estimation(
-                camera_coord_list, coord_coil_list)
-            self.matrix_camera_to_tracker = X_est, Y_est
+                coord_coil_list, camera_coord_list)
+
+            affine_matrix_camera_to_tracker = self.tracker.trk_init[0][1].AffineTransformation(np.array(self.tracker_coord_list), np.array(self.camera_coord_list))
+
+            self.matrix_camera_to_tracker = X_est, Y_est, affine_matrix_camera_to_tracker
+
+            print(ErrorStats)
 
             self.btn_save.Enable(True)
             self.btn_ok.Enable(True)
