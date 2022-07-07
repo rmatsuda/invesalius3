@@ -66,7 +66,7 @@ import invesalius.session as ses
 
 from invesalius import utils
 from invesalius.gui import utils as gui_utils
-from invesalius.navigation.icp import ICP
+from invesalius.navigation.iterativeclosestpoint import IterativeClosestPoint
 from invesalius.navigation.navigation import Navigation
 from invesalius.navigation.tracker import Tracker
 from invesalius.data.converters import to_vtk
@@ -171,7 +171,7 @@ class InnerFoldPanel(wx.Panel):
         #
         tracker = Tracker()
         pedal_connection = PedalConnection() if HAS_PEDAL_CONNECTION else None
-        icp = ICP()
+        icp = IterativeClosestPoint()
         neuronavigation_api = NeuronavigationApi()
         navigation = Navigation(
             pedal_connection=pedal_connection,
@@ -700,6 +700,7 @@ class NeuronavigationPanel(wx.Panel):
             else:
                 Publisher.sendMessage('Disconnect tracker')
                 wx.MessageBox(_("Not possible to connect to the robot."), _("InVesalius 3"))
+            self.dlg_correg_robot.Destroy()
 
         if self.tracker.tracker_id == const.CAMERA:
             dlg_correg_camera = dlg.CreateTransformationMatrix(self.tracker)
@@ -856,7 +857,7 @@ class NeuronavigationPanel(wx.Panel):
                 # which improves FRE.
                 self.CheckFiducialRegistrationError()
 
-            self.navigation.StartNavigation(self.tracker)
+            self.navigation.StartNavigation(self.tracker, self.icp)
 
     def OnNavigate(self, evt, btn_nav):
         select_tracker_elem = self.select_tracker_elem
@@ -1081,7 +1082,6 @@ class ObjectRegistrationPanel(wx.Panel):
         Publisher.sendMessage('Change selected coil', self.coil_list[coil_index][1])
 
     def OnCreateNewCoil(self, event=None):
-
         if self.tracker.IsTrackerInitialized():
             dialog = dlg.ObjectCalibrationDialog(self.tracker, self.pedal_connection)
             try:
@@ -1109,7 +1109,7 @@ class ObjectRegistrationPanel(wx.Panel):
 
             except wx._core.PyAssertionError:  # TODO FIX: win64
                 pass
-
+            dialog.Destroy()
         else:
             dlg.ShowNavigationTrackerWarning(0, 'choose')
 
@@ -1491,19 +1491,21 @@ class MarkersPanel(wx.Panel):
         menu_id.Bind(wx.EVT_MENU, self.OnMenuSetColor, color_id)
         menu_id.AppendSeparator()
         if self.__find_target_marker() == self.lc.GetFocusedItem():
-            target_menu = menu_id.Append(1, _('Remove target'))
+            target_menu = menu_id.Append(2, _('Remove target'))
             menu_id.Bind(wx.EVT_MENU, self.OnMenuRemoveTarget, target_menu)
         else:
-            target_menu = menu_id.Append(1, _('Set as target'))
+            target_menu = menu_id.Append(2, _('Set as target'))
             menu_id.Bind(wx.EVT_MENU, self.OnMenuSetTarget, target_menu)
+        orientation_menu = menu_id.Append(3, _('Set coil target orientation'))
+        menu_id.Bind(wx.EVT_MENU, self.OnMenuSetCoilOrientation, orientation_menu)
         menu_id.AppendSeparator()
 
         check_target_angles = all([elem is not None for elem in self.markers[self.lc.GetFocusedItem()].coord[3:]])
         # Enable "Send target to robot" button only if tracker is robot, if navigation is on and if target is not none
         if self.tracker.tracker_id == const.ROBOT:
-            send_target_to_robot_compensation = menu_id.Append(3, _('Sets target to robot head move compensation'))
+            send_target_to_robot_compensation = menu_id.Append(4, _('Sets target to robot head move compensation'))
             menu_id.Bind(wx.EVT_MENU, self.OnMenuSetRobotCompensation, send_target_to_robot_compensation)
-            send_target_to_robot = menu_id.Append(4, _('Send target from InVesalius to robot'))
+            send_target_to_robot = menu_id.Append(5, _('Send target from InVesalius to robot'))
             menu_id.Bind(wx.EVT_MENU, self.OnMenuSendTargetToRobot, send_target_to_robot)
             if self.nav_status and check_target_angles:
                 send_target_to_robot_compensation.Enable(True)
@@ -1545,6 +1547,16 @@ class MarkersPanel(wx.Panel):
             self.__set_marker_as_target(idx)
         else:
             wx.MessageBox(_("No data selected."), _("InVesalius 3"))
+
+    def OnMenuSetCoilOrientation(self, evt):
+        list_index = self.lc.GetFocusedItem()
+        marker = self.markers[list_index].coord
+        dialog = dlg.SetCoilOrientationDialog(marker=marker)
+
+        if dialog.ShowModal() == wx.ID_OK:
+            marker[3], marker[4], marker[5] = dialog.GetValue()
+            self.CreateMarker(marker)
+        dialog.Destroy()
 
     def OnMenuRemoveTarget(self, evt):
         idx = self.lc.GetFocusedItem()
