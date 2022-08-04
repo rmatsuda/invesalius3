@@ -122,25 +122,28 @@ def CameraTracker(tracker_id):
     try:
         from cameratracker import cameratracker as cam
         from wx import ID_OK
-        import threading
-
-        dlg_device = dlg.SetTrackerDeviceToRobot()
-        if dlg_device.ShowModal() == ID_OK:
-            tracker_id = dlg_device.GetValue()
-            if tracker_id:
-                trck_init = TrackerConnection(tracker_id, None, 'connect')
-                if trck_init[0]:
-                    init_cam = cam.camera()
-                    CameraCoordinates = cam.CameraCoordinates()
-                    init_cam.Initialize(CameraCoordinates, init_cam)
-
-                    print('Connect to camera tracking device.')
-
-                    return [trck_init, init_cam, CameraCoordinates], tracker_id
     except:
         print('Could not connect to camera tracker.')
+        return None, None
+
+    dlg_device = dlg.SetTrackerDeviceToRobot()
+    if dlg_device.ShowModal() == ID_OK:
+        tracker_id = dlg_device.GetValue()
+        if tracker_id:
+            trck_init = TrackerConnection(tracker_id, None, 'connect')
+            if trck_init[0]:
+                init_cam = cam.camera()
+                CameraCoordinates = cam.CameraCoordinates()
+                init_cam.Initialize(CameraCoordinates, init_cam)
+
+                print('Connect to camera tracking device.')
+                dlg_device.Destroy()
+
+                return [trck_init, init_cam, CameraCoordinates], tracker_id
 
     # return tracker initialization variable and type of connection
+    dlg_device.Destroy()
+
     return None, None
 
 def PolarisTracker(tracker_id):

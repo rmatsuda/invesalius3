@@ -960,6 +960,17 @@ def ReportICPerror(prev_error, final_error):
     dlg.ShowModal()
     dlg.Destroy()
 
+def ReportCameraRegistrationError(error):
+    msg = _("Mean camera registration error: ") + str(np.round(error[0], 2)) + _("Std: ") + str(np.round(error[1], 2))
+    if sys.platform == 'darwin':
+        dlg = wx.MessageDialog(None, "", msg,
+                               wx.OK)
+    else:
+        dlg = wx.MessageDialog(None, msg, "InVesalius 3",
+                               wx.OK)
+    dlg.ShowModal()
+    dlg.Destroy()
+
 def ReportICPPointError():
     msg = _("The last point is more than 20 mm away from the surface") + '\n\n' + _("Please, create a new point.")
     if sys.platform == 'darwin':
@@ -5136,6 +5147,10 @@ class CreateTransformationMatrix(wx.Dialog):
         self.btn_ok.Enable(False)
 
         self.matrix_camera_to_tracker = []
+        self.camera_coord_matrix_list = np.zeros((4, 4))[np.newaxis]
+        self.tracker_coord_matrix_list = np.zeros((4, 4))[np.newaxis]
+        self.camera_coord_list = []
+        self.tracker_coord_list = []
 
     def OnApply(self, evt):
         if self.btn_cont_point:
@@ -5152,12 +5167,14 @@ class CreateTransformationMatrix(wx.Dialog):
             self.matrix_camera_to_tracker = X_est, Y_est, affine_matrix_camera_to_tracker
 
             print(ErrorStats)
+            ReportCameraRegistrationError(ErrorStats)
 
             self.btn_save.Enable(True)
             self.btn_ok.Enable(True)
 
         except np.linalg.LinAlgError:
             print("numpy.linalg.LinAlgError")
+            ReportCameraRegistrationError([999, 999])
             print("Try a new acquisition")
 
     def OnSaveReg(self, evt):
