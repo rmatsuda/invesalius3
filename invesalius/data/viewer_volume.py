@@ -39,8 +39,22 @@ from vtkmodules.vtkCommonCore import (
     vtkPoints,
     vtkUnsignedCharArray
 )
+from vtkmodules.vtkCommonDataModel import (
+    vtkCellLocator,
+    vtkIterativeClosestPointTransform,
+    vtkPolyData,
+)
 from vtkmodules.vtkCommonMath import vtkMatrix4x4
 from vtkmodules.vtkCommonTransforms import vtkTransform
+from vtkmodules.vtkCommonColor import vtkNamedColors, vtkColorSeries
+from vtkmodules.vtkCommonDataModel import vtkImageData
+from vtkmodules.vtkFiltersCore import vtkResampleWithDataSet
+from vtkmodules.vtkFiltersGeneral import vtkTableToPolyData
+from vtkmodules.vtkFiltersPoints import (
+    vtkGaussianKernel,
+    vtkPointInterpolator
+)
+from vtkmodules.vtkIOInfovis import vtkDelimitedTextReader
 from vtkmodules.vtkFiltersCore import vtkPolyDataNormals
 from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
 from vtkmodules.vtkFiltersHybrid import vtkRenderLargeImage
@@ -78,6 +92,7 @@ from vtkmodules.vtkRenderingAnnotation import vtkAnnotatedCubeActor, vtkAxesActo
 from vtkmodules.vtkRenderingCore import (
     vtkActor,
     vtkPointPicker,
+    vtkPointGaussianMapper,
     vtkPolyDataMapper,
     vtkProperty,
     vtkPropPicker,
@@ -89,6 +104,7 @@ from vtkmodules.wx.wxVTKRenderWindowInteractor import wxVTKRenderWindowInteracto
 
 from invesalius.pubsub import pub as Publisher
 import random
+from scipy.io import loadmat
 from scipy.spatial import distance
 
 from imageio import imsave
@@ -105,6 +121,8 @@ import invesalius.style as st
 import invesalius.utils as utils
 
 from invesalius import inv_paths
+
+import vtk
 
 
 
@@ -264,6 +282,8 @@ class Viewer(wx.Panel):
 
         self.actor_tracts = None
         self.actor_peel = None
+        self.mapActor = None
+        self.colorBarActor = None
         self.seed_offset = const.SEED_OFFSET
 
         self.set_camera_position = True
@@ -1583,7 +1603,251 @@ class Viewer(wx.Panel):
             self.actor_peel = actor
             self.ren.AddActor(self.object_orientation_torus_actor)
             self.ren.AddActor(self.obj_projection_arrow_actor)
+            self.motor_mapping_viewer()
         self.Refresh()
+
+    def motor_mapping_viewer(self):
+        # SETTINGS
+        threshold_down = 0
+        # threshold_up = 500
+
+        # dims_size = 1001
+        dims_size = 501
+        icp = False
+        offset_y = 0
+        offset_z = 0
+        gaussian_sharpness = 3
+        gaussian_radius = 4
+
+        path = 'G:\\Meu Drive\\Lab\\Doutorado\\projetos\\mTMS\\experiment #2 motor mapping\\mapping\\'
+        subject = "Joonas"
+        timestamp = time.localtime(time.time())
+        stamp_date = '{:0>4d}{:0>2d}{:0>2d}'.format(timestamp.tm_year, timestamp.tm_mon, timestamp.tm_mday)
+        stamp_time = '{:0>2d}{:0>2d}{:0>2d}'.format(timestamp.tm_hour, timestamp.tm_min, timestamp.tm_sec)
+        sep = '-'
+        parts = [subject, stamp_date, stamp_time]
+        data_filename = sep.join(parts) + '.txt'
+
+        if self.mapActor:
+            self.ren.RemoveActor(self.mapActor)
+            self.ren.RemoveActor(self.colorBarActor)
+
+        def transformPolyData(actor):
+            polyData = vtk.vtkPolyData()
+            polyData.DeepCopy(actor.GetMapper().GetInput())
+            transform = vtk.vtkTransform()
+            transform.SetMatrix(actor.GetMatrix())
+            fil = vtk.vtkTransformPolyDataFilter()
+            fil.SetTransform(transform)
+            fil.SetInputDataObject(polyData)
+            fil.Update()
+            polyData.DeepCopy(fil.GetOutput())
+            return polyData
+
+        def ICP(coord, surface):
+            """
+            Apply ICP transforms to fit the points to the surface
+            Args:
+                coord: raw coordinates to apply ICP
+            """
+            sourcePoints = np.array(coord[:3])
+            sourcePoints_vtk = vtkPoints()
+            for n in range(len(sourcePoints)):
+                id0 = sourcePoints_vtk.InsertNextPoint(sourcePoints)
+            source = vtkPolyData()
+            source.SetPoints(sourcePoints_vtk)
+
+            source_points = source
+
+            icp = vtkIterativeClosestPointTransform()
+            icp.SetSource(source_points)
+            icp.SetTarget(surface)
+
+            icp.GetLandmarkTransform().SetModeToRigidBody()
+            # icp.GetLandmarkTransform().SetModeToAffine()
+            icp.DebugOn()
+            icp.SetMaximumNumberOfIterations(100)
+            icp.Modified()
+            icp.Update()
+
+            icpTransformFilter = vtkTransformPolyDataFilter()
+            icpTransformFilter.SetInputData(source_points)
+            icpTransformFilter.SetTransform(icp)
+            icpTransformFilter.Update()
+
+            transformedSource = icpTransformFilter.GetOutput()
+            p = [0, 0, 0]
+            transformedSource.GetPoint(0, p)
+
+            return p[0], p[1], p[2], None, None, None
+
+        # Read a probe surface
+        #tl_reader = vtkSTLReader()
+        #stl_reader.SetFileName(path + subject + '\\T1.stl')
+        # stl_reader = vtk.vtkOBJImporter()
+        # stl_reader.SetFileName('peel_brain.obj')
+        # stl_reader.SetFileNameMTL('peel_brain.mtl')
+        # stl_reader.SetFileName('peel_brain.stl')
+        #stl_reader.Update()
+
+        #surface = stl_reader.GetOutput()
+        surface = transformPolyData(self.actor_peel)
+        bounds = np.array(surface.GetBounds())
+
+        coords = []
+        mep = []
+        mep_average = []
+        targets = ["target_0", "target_1", "target_-1"]
+        for target in targets:
+            filename = path + subject + "\\" + target + ".mkss"
+            mat_path = path + subject + "\\" + target + "\\"
+            with open(filename, 'r') as file:
+                magick_line = file.readline()
+                assert magick_line.startswith("##INVESALIUS3_MARKER_FILE_")
+                ver = int(magick_line.split('_')[-1])
+                file.readline()  # skip the header line
+
+                # Read the data lines and create markers
+                for line in file.readlines():
+                    if line.split('\t')[16] == "True":
+                        # for i in range(5):
+                        coord = [float(x) for x in line.split('\t')[:3]]
+                        coord_flip = coord.copy()
+                        coord_flip[1] = -coord_flip[1] - offset_y
+                        coord_flip[2] = coord_flip[2] + offset_z
+                        if icp:
+                            coord_icp = list(ICP(coord_flip, surface))
+                            coords.append(coord_icp[:3])
+                        else:
+                            coords.append(coord_flip[:3])
+                    # mep.append(float(line.split('\t')[2]))
+            coords_np = np.array(coords)
+            coord_flip = coords_np.copy()
+
+            for index in range(1, 10):
+                file = "mepResults" + str(index) + ".mat"
+                mat = loadmat(mat_path + file)
+                mep_ = np.max(np.abs(mat["meps"]["allEpochs"][0][0]), axis=1)
+                mep.append(mep_)
+                try:
+                    mep_average.append(np.average(mep_, weights=mep_ > 50))
+                except ZeroDivisionError:
+                    mep_average.append(0.0)
+
+        mep = np.hstack(mep)
+        mep_average = np.hstack(mep_average)
+
+        with open(data_filename, 'w', newline='') as file:
+            file.writelines(["X\tY\tZ\tMEP\n"])
+            for i, marker in enumerate(coord_flip):
+                file.writelines('%s\t' % float(x) for x in marker)
+                file.writelines('%s' % float(mep_average[i]))
+                file.writelines('\n')
+            file.close()
+
+        points_reader = vtkDelimitedTextReader()
+        points_reader.SetFileName(data_filename)
+        points_reader.DetectNumericColumnsOn()
+        points_reader.SetFieldDelimiterCharacters('\t')
+        points_reader.SetHaveHeaders(True)
+
+        # create the vtkTable object
+        table_points = vtkTableToPolyData()
+        table_points.SetInputConnection(points_reader.GetOutputPort())
+        table_points.SetXColumnIndex(0)
+        table_points.SetYColumnIndex(1)
+        table_points.SetZColumnIndex(2)
+        table_points.Update()
+
+        points = table_points.GetOutput()
+
+        points.GetPointData().SetActiveScalars('MEP')
+        range_up = points.GetPointData().GetScalars().GetRange()[1]
+        range_threshold= (threshold_down, range_up)
+
+        dims = np.array([dims_size, dims_size, dims_size])
+        box = vtkImageData()
+        box.SetDimensions(dims)
+        box.SetSpacing((bounds[1::2] - bounds[:-1:2]) / (dims - 1))
+        box.SetOrigin(bounds[::2])
+
+        # Gaussian kernel
+        gaussian_kernel = vtkGaussianKernel()
+        gaussian_kernel.SetSharpness(gaussian_sharpness)
+        gaussian_kernel.SetRadius(gaussian_radius)
+
+        interpolator = vtkPointInterpolator()
+        interpolator.SetInputData(box)
+        interpolator.SetSourceData(points)
+        interpolator.SetKernel(gaussian_kernel)
+
+        resample = vtkResampleWithDataSet()
+        resample.SetInputData(surface)
+        resample.SetSourceConnection(interpolator.GetOutputPort())
+
+        mapper = vtkPolyDataMapper()
+        mapper.SetInputConnection(resample.GetOutputPort())
+        mapper.SetScalarRange(range_threshold)
+
+        lut = vtkLookupTable()
+        lut.SetTableRange(threshold_down, range_up)
+        colorSeries = vtkColorSeries()
+        seriesEnum = colorSeries.BREWER_SEQUENTIAL_YELLOW_ORANGE_BROWN_9
+        colorSeries.SetColorScheme(seriesEnum)
+        colorSeries.BuildLookupTable(lut, colorSeries.ORDINAL)
+        lut_map = vtkLookupTable()
+        lut_map.DeepCopy(lut)
+        lut_map.SetTableValue(0, 1., 1., 1., 0.)
+        lut_map.Build()
+        mapper.GetLookupTable().SetNanColor(0., 0., 0., 0.5)
+        mapper.SetLookupTable(lut_map)
+        mapActor = vtkActor()
+        mapActor.SetMapper(mapper)
+        self.mapActor = mapActor
+
+        point_mapper = vtkPointGaussianMapper()
+        point_mapper.SetInputData(points)
+        point_mapper.SetScalarRange(range_threshold)
+        point_mapper.SetScaleFactor(0.4)
+        point_mapper.EmissiveOff()
+        point_mapper.SetSplatShaderCode(
+            "//VTK::Color::Impl\n"
+            "float dist = dot(offsetVCVSOutput.xy,offsetVCVSOutput.xy);\n"
+            "if (dist > 1.0) {\n"
+            "  discard;\n"
+            "} else {\n"
+            "  float scale = (1.0 - dist);\n"
+            "  ambientColor *= scale;\n"
+            "  diffuseColor *= scale;\n"
+            "}\n"
+        )
+
+        point_mapper.SetLookupTable(lut)
+        point_actor = vtkActor()
+        point_actor.SetMapper(point_mapper)
+
+        colorBarActor = vtk.vtkScalarBarActor()
+        self.colorBarActor = colorBarActor
+        #            self.colorBarActor.SetMaximumWidthInPixels( 50 )
+        colorBarActor.SetNumberOfLabels(8)
+        labelFormat = vtk.vtkTextProperty()
+        labelFormat.SetFontSize(160)
+        titleFormat = vtk.vtkTextProperty()
+        titleFormat.SetFontSize(250)
+        titleFormat.SetVerticalJustificationToTop()
+        # titleFormat.BoldOn()
+        # colorBarActor.SetPosition( pos[0], pos[1] )
+        # colorBarActor.SetLabelTextProperty(labelFormat)
+        # colorBarActor.SetTitleTextProperty(titleFormat)
+        colorBarActor.SetTitle("MEP amplitude")
+        colorBarActor.SetLookupTable(lut)
+        colorBarActor.SetVisibility(1)
+        colorBarActor.SetMaximumWidthInPixels(75)
+        # actor.GetProperty().SetOpacity(0.99)
+        #mapActor.SetScale(0.98)
+        self.ren.AddActor(mapActor)
+        self.ren.AddActor(point_actor)
+        self.ren.AddActor(colorBarActor)
 
     def GetPeelCenters(self, centers, normals):
         self.peel_centers = centers
