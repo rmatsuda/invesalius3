@@ -131,8 +131,8 @@ for target in targets:
                 coord_flip = coord.copy()
                 coord_flip[1] = -coord_flip[1]-offset_y
                 coord_flip[2] = coord_flip[2]+offset_z
-                coord_icp = list(ICP(coord_flip, surface))
                 if icp:
+                    coord_icp = list(ICP(coord_flip, surface))
                     coords.append(coord_icp[:3])
                 else:
                     coords.append(coord_flip[:3])

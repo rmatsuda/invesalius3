@@ -725,7 +725,7 @@ class Viewer(wx.Panel):
             """
             Markers arrow with orientation created by navigation tools and rendered in volume viewer.
             """
-            marker_actor = self.CreateActorArrow(position_flip, orientation, colour, const.ARROW_MARKER_SIZE)
+            marker_actor = self.CreateActorArrow(position_flip, orientation, colour, size)
         else:
             marker_actor = self.CreateActorBall(position_flip, colour, size)
 
