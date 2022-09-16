@@ -5438,6 +5438,7 @@ class SetNDIconfigs(wx.Dialog):
         port_list, port_selec = self.serial_ports()
 
         com_ports.Append(port_list)
+        com_ports.Append("p9-13715.local")
         if port_selec:
             com_ports.SetSelection(port_selec[0])
 
