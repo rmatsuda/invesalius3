@@ -209,7 +209,7 @@ def CameraCoord(trck_init, trck_id, ref_mode):
 
     coord, markers_flag_camera = camera_tracker.GetCoordinates()
     probeID, refID, coilID = markers_flag_camera
-    print(coord[1], coord_tracker[1])
+    #print(coord[1], coord_tracker[1])
     return np.vstack([coord_tracker[0], coord[1], coord_tracker[2], coord_tracker[1]]), \
            [markers_flag[0],  refID, markers_flag[2], markers_flag[1]]
 
