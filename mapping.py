@@ -35,6 +35,16 @@ from vtkmodules.vtkRenderingCore import (
     vtkProperty,
     vtkRenderer,
 )
+from vtkmodules.vtkIOImage import vtkPNGWriter
+from vtkmodules.vtkRenderingCore import (
+    vtkActor,
+    vtkPolyDataMapper,
+    vtkRenderWindow,
+    vtkRenderWindowInteractor,
+    vtkRenderer,
+    vtkWindowToImageFilter
+)
+
 from vtkmodules.vtkRenderingFreeType import vtkVectorText
 from vtkmodules.wx.wxVTKRenderWindowInteractor import wxVTKRenderWindowInteractor
 import time
@@ -52,7 +62,11 @@ gaussian_sharpness = 3
 gaussian_radius = 4
 
 path = 'G:\\Meu Drive\\Lab\\Doutorado\\projetos\\mTMS\\experiment #2 motor mapping\\mapping\\'
-subject = "Victor"
+subject = "Tuomas"
+if subject == "Tuomas":
+    offset_z = 4
+elif subject == "Victor":
+    offset_z = 7
 timestamp = time.localtime(time.time())
 stamp_date = '{:0>4d}{:0>2d}{:0>2d}'.format(timestamp.tm_year, timestamp.tm_mon, timestamp.tm_mday)
 stamp_time = '{:0>2d}{:0>2d}{:0>2d}'.format(timestamp.tm_hour, timestamp.tm_min, timestamp.tm_sec)
@@ -152,12 +166,13 @@ for target in targets:
 
 mep = np.hstack(mep)
 mep_average = np.hstack(mep_average)
+mep_average_norm = (mep_average - mep_average.min())/ (mep_average.max() - mep_average.min())
 
 with open(data_filename, 'w', newline='') as file:
     file.writelines(["X\tY\tZ\tMEP\n"])
     for i, marker in enumerate(coord_flip):
         file.writelines('%s\t' % float(x) for x in marker)
-        file.writelines('%s' % float(mep_average[i]))
+        file.writelines('%s' % float(mep_average_norm[i]))
         file.writelines('\n')
     file.close()
 
@@ -242,11 +257,21 @@ point_mapper.SetLookupTable(lut)
 point_actor = vtk.vtkActor()
 point_actor.SetMapper(point_mapper)
 
+actor.SetOrientation((-12, 41, 66))
+point_actor.SetOrientation((-12, 41, 66))
+
 colorBarActor = vtk.vtkScalarBarActor()
+#colorBarActor.SetOrientationToHorizontal()
 #            self.colorBarActor.SetMaximumWidthInPixels( 50 )
-colorBarActor.SetNumberOfLabels(8)
+colorBarActor.SetLookupTable(lut)
+#colorBarActor.SetNumberOfLabels(2)
+#colorBarActor.SetPosition(0.05, 0.1)
+#colorBarActor.SetWidth(0.4)
+#colorBarActor.SetHeight(0.08)
 labelFormat = vtk.vtkTextProperty()
 #labelFormat.SetFontSize(160)
+
+colorBarActor.SetTitle("MEP amplitude µV\n")
 titleFormat = vtk.vtkTextProperty()
 #titleFormat.SetFontSize(250)
 titleFormat.SetVerticalJustificationToTop()
@@ -254,23 +279,54 @@ titleFormat.SetVerticalJustificationToTop()
 #colorBarActor.SetPosition( pos[0], pos[1] )
 #colorBarActor.SetLabelTextProperty(labelFormat)
 #colorBarActor.SetTitleTextProperty(titleFormat)
-colorBarActor.SetTitle("MEP amplitude µV\n")
-colorBarActor.SetLookupTable(lut)
 colorBarActor.SetVisibility(1)
 #colorBarActor.SetMaximumWidthInPixels(75)
+
+def OnPressLeftButton(evt, obj):
+    print(actor.GetOrientation())
 
 
 renderer = vtk.vtkRenderer()
 renWin = vtk.vtkRenderWindow()
 renWin.AddRenderer(renderer)
+renWin.SetSize(2048, 1080)
 iren = vtk.vtkRenderWindowInteractor()
 iren.SetRenderWindow(renWin)
+
+
 #actor.GetProperty().SetOpacity(0.99)
 renderer.AddActor(actor)
 renderer.AddActor(point_actor)
 renderer.AddActor(colorBarActor)
 
+cam = renderer.GetActiveCamera()
+renderer.ResetCamera()
+print(cam.SetPosition((181.50680842279354, 97.51127257102047+200, 864.2770996170809)))
+cam.Zoom(6)
+#camera_style = vtkInteractorStyleTrackballActor()
+#cam = renderer.GetActiveCamera()
+#renderer.ResetCamera()
+#cam.SetPosition(-215.8474015838563, -216.22066684736413, 445.22607604448297)
+#cam.SetOrientation(-10.128997076024026, 45.60846498615863, 72.0405518553683)
+#camera_style = vtkInteractorStyleTrackballActor()
+#iren.SetInteractorStyle(camera_style)
+#iren.AddObserver("LeftButtonPressEvent", OnPressLeftButton)
+
+# Position is at origin, looking in z direction with y down
+#print(cam.GetPosition())
+
 iren.Initialize()
 
 renWin.Render()
+# screenshot code:
+w2if = vtkWindowToImageFilter()
+w2if.SetInput(renWin)
+w2if.SetInputBufferTypeToRGB()
+w2if.ReadFrontBufferOff()
+w2if.Update()
+
+writer = vtkPNGWriter()
+writer.SetFileName(subject+'_zoom_Screenshot.png')
+writer.SetInputConnection(w2if.GetOutputPort())
+writer.Write()
 iren.Start()
