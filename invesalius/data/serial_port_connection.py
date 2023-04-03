@@ -35,6 +35,7 @@ class SerialPortConnection(threading.Thread):
 
         self.connection = None
         self.stylusplh = False
+        self.trigger_on = False
 
         self.com_port = com_port
         self.baud_rate = baud_rate
@@ -64,27 +65,29 @@ class SerialPortConnection(threading.Thread):
 
     def SendPulse(self):
         try:
-            self.connection.send_break(constants.PULSE_DURATION_IN_MILLISECONDS / 1000)
+            #self.connection.send_break(constants.PULSE_DURATION_IN_MILLISECONDS / 1000)
+            self.connection.write(b"0")
             Publisher.sendMessage('Serial port pulse triggered')
         except:
             print("Error: Serial port could not be written into.")
 
     def run(self):
         while not self.event.is_set():
-            trigger_on = False
             try:
                 lines = self.connection.readlines()
-                if lines:
-                    trigger_on = True
+                if lines and not self.trigger_on:
+                    self.trigger_on = True
+                else:
+                    self.trigger_on = False
             except:
                 print("Error: Serial port could not be read.")
 
             if self.stylusplh:
-                trigger_on = True
+                self.trigger_on = True
                 self.stylusplh = False
 
             try:
-                self.serial_port_queue.put_nowait(trigger_on)
+                self.serial_port_queue.put_nowait(self.trigger_on)
             except queue.Full:
                 print("Error: Serial port queue full.")
 

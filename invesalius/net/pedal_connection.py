@@ -22,6 +22,7 @@ from threading import Thread
 
 import mido
 
+from invesalius import constants
 from invesalius.pubsub import pub as Publisher
 from invesalius.utils import Singleton
 
@@ -42,6 +43,35 @@ class PedalConnection(Thread, metaclass=Singleton):
         self._active_inputs = None
         self._callback_infos = []
 
+        self.serial = True
+        self.com_port = "COM6"
+        self.baud_rate = 9600
+        self.connect_serial()
+        self.state = False
+
+    def connect_serial(self):
+        if self.serial:
+            if self.com_port is None:
+                print("Serial port init error: COM port is unset.")
+                return
+            try:
+                import serial
+                self.connection = serial.Serial(self.com_port, baudrate=self.baud_rate, timeout=0)
+                print("Connection to port {} opened.".format(self.com_port))
+            except:
+                print("Serial port init error: Connecting to port {} failed.".format(self.com_port))
+
+    def serial_loop(self):
+        if self.connection:
+            self.connection.send_break(constants.PULSE_DURATION_IN_MILLISECONDS/1000)
+            lines = self.connection.readlines()
+            if lines and not self.state:
+                self.state = True
+                self.send_pedal(self.state)
+            elif self.state and not lines:
+                self.state = False
+                self.send_pedal(self.state)
+
     def _midi_to_pedal(self, msg):
         # TODO: At this stage, interpret all note_on messages as the pedal being pressed,
         #       and note_off messages as the pedal being released. Later, use the correct
@@ -56,8 +86,9 @@ class PedalConnection(Thread, metaclass=Singleton):
         else:
             print("Unknown message type received from MIDI device")
             return
+        self.send_pedal(state)
 
-        Publisher.sendMessage('Pedal state changed', state=state)
+    def send_pedal(self, state):
         for callback_info in self._callback_infos:
             callback = callback_info['callback']
             callback(state)
@@ -104,7 +135,9 @@ class PedalConnection(Thread, metaclass=Singleton):
     def run(self):
         self.in_use = True
         while True:
-            self._update_midi_inputs()
-            self._check_disconnected()
-            self._connect_if_disconnected()
-            time.sleep(1.0)
+            #self._update_midi_inputs()
+            #self._check_disconnected()
+            #self._connect_if_disconnected()
+            self.serial_loop()
+
+            time.sleep(0.5)
