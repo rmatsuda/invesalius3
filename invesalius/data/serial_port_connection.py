@@ -49,7 +49,10 @@ class SerialPortConnection(threading.Thread):
             return
         try:
             import serial
-            self.connection = serial.Serial(self.com_port, baudrate=self.baud_rate, timeout=0)
+            self.connection = serial.Serial(self.com_port, baudrate=self.baud_rate, timeout=0,
+                                                parity=serial.PARITY_NONE,
+                                                stopbits=serial.STOPBITS_ONE,
+                                                bytesize=serial.EIGHTBITS)
             print("Connection to port {} opened.".format(self.com_port))
 
             Publisher.sendMessage('Serial port connection', state=True)
@@ -65,8 +68,9 @@ class SerialPortConnection(threading.Thread):
 
     def SendPulse(self):
         try:
-            #self.connection.send_break(constants.PULSE_DURATION_IN_MILLISECONDS / 1000)
             self.connection.write(b"0")
+            self.connection.send_break(constants.PULSE_DURATION_IN_MILLISECONDS / 1000)
+            print("pulse")
             Publisher.sendMessage('Serial port pulse triggered')
         except:
             print("Error: Serial port could not be written into.")

@@ -44,9 +44,10 @@ class PedalConnection(Thread, metaclass=Singleton):
         self._callback_infos = []
 
         self.serial = True
-        self.com_port = "COM6"
+        self.com_port = "COM7"
         self.baud_rate = 9600
         self.connect_serial()
+        time.sleep(2)
         self.state = False
 
     def connect_serial(self):
@@ -56,19 +57,25 @@ class PedalConnection(Thread, metaclass=Singleton):
                 return
             try:
                 import serial
-                self.connection = serial.Serial(self.com_port, baudrate=self.baud_rate, timeout=0)
+                self.connection = serial.Serial(self.com_port, baudrate=self.baud_rate, timeout=0,
+                                                parity=serial.PARITY_NONE,
+                                                stopbits=serial.STOPBITS_ONE,
+                                                bytesize=serial.EIGHTBITS)
                 print("Connection to port {} opened.".format(self.com_port))
             except:
                 print("Serial port init error: Connecting to port {} failed.".format(self.com_port))
 
     def serial_loop(self):
         if self.connection:
-            self.connection.send_break(constants.PULSE_DURATION_IN_MILLISECONDS/1000)
+            self.connection.write(b"0")
+            time.sleep(0.1)
             lines = self.connection.readlines()
-            if lines and not self.state:
+            #self.connection.send_break(constants.PULSE_DURATION_IN_MILLISECONDS/1000)
+            #print(lines)
+            if lines and not self.state and lines != [b'\x00']:
                 self.state = True
                 self.send_pedal(self.state)
-            elif self.state and not lines:
+            elif self.state and (not lines or lines == [b'\x00']):
                 self.state = False
                 self.send_pedal(self.state)
 
@@ -140,4 +147,4 @@ class PedalConnection(Thread, metaclass=Singleton):
             #self._connect_if_disconnected()
             self.serial_loop()
 
-            time.sleep(0.5)
+            time.sleep(0.2)
