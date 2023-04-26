@@ -44,7 +44,7 @@ class PedalConnection(Thread, metaclass=Singleton):
         self._callback_infos = []
 
         self.serial = True
-        self.com_port = "COM7"
+        self.com_port = "COM3"
         self.baud_rate = 9600
         self.connect_serial()
         time.sleep(2)
