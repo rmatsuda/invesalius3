@@ -1,10 +1,10 @@
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Software:     InVesalius - Software de Reconstrucao 3D de Imagens Medicas
 # Copyright:    (C) 2001  Centro de Pesquisas Renato Archer
 # Homepage:     http://www.softwarepublico.gov.br
 # Contact:      invesalius@cti.gov.br
 # License:      GNU - GPL 2 (LICENSE.txt/LICENCA.txt)
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 #    Este programa e software livre; voce pode redistribui-lo e/ou
 #    modifica-lo sob os termos da Licenca Publica Geral GNU, conforme
 #    publicada pela Free Software Foundation; de acordo com a versao 2
@@ -15,13 +15,16 @@
 #    COMERCIALIZACAO ou de ADEQUACAO A QUALQUER PROPOSITO EM
 #    PARTICULAR. Consulte a Licenca Publica Geral GNU para obter mais
 #    detalhes.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from invesalius.pubsub import pub as Publisher
-from invesalius.utils import Singleton
+from invesalius.utils import Singleton, debug
+
+import wx
 
 import numpy as np
 from vtkmodules.numpy_interface import dataset_adapter
+
 
 class NeuronavigationApi(metaclass=Singleton):
     """
@@ -63,7 +66,17 @@ class NeuronavigationApi(metaclass=Singleton):
 
     def __bind_events(self):
         Publisher.subscribe(self.update_coil_at_target, 'Coil at target')
-        Publisher.subscribe(self.update_focus, 'Set cross focal point')
+        #Publisher.subscribe(self.update_focus, 'Set cross focal point')
+        Publisher.subscribe(self.update_target_orientation, 'Update target orientation')
+
+    # Functions for InVesalius to send updates.
+
+    def update_target_orientation(self, target_id, orientation):
+        if self.connection is not None:
+            self.connection.update_target_orientation(
+                target_id=target_id,
+                orientation=orientation
+            )
 
     # Functions for InVesalius to send updates.
 
@@ -118,10 +131,59 @@ class NeuronavigationApi(metaclass=Singleton):
                 state=state
             )
 
+    def initialize_efield(self, cortex_model_path, mesh_models_paths, coil_model_path, conductivities_inside, conductivities_outside):
+        if self.connection is not None:
+            return self.connection.initialize_efield(
+                cortex_model_path=cortex_model_path,
+                mesh_models_paths= mesh_models_paths,
+                coil_model_path =coil_model_path,
+                conductivities_inside= conductivities_inside,
+                conductivities_outside = conductivities_outside,
+            )
+        return None
+
+    def init_efield_config_file(self, config_file):
+        if self.connection is not None:
+            return self.connection.init_efield_json(
+                config_file=config_file
+            )
+        return None
+
+    def efield_coil(self, coil_model_path):
+        if self.connection is not None:
+            return self.connection.set_coil(
+                coil_model_path=coil_model_path
+            )
+
+    def update_efield(self, position, orientation, T_rot):
+        if self.connection is not None:
+            return self.connection.update_efield(
+                position=position,
+                orientation=orientation,
+                T_rot = T_rot,
+            )
+        return None
+
     # Functions for InVesalius to receive updates via callbacks.
 
     def __set_callbacks(self, connection):
         connection.set_callback__set_markers(self.set_markers)
+        connection.set_callback__open_orientation_dialog(self.open_orientation_dialog)
+
+    def add_pedal_callback(self, name, callback, remove_when_released=False):
+        if self.connection is not None:
+            self.connection.add_pedal_callback(
+                name=name,
+                callback=callback,
+                remove_when_released=remove_when_released,
+            )
+
+    def remove_pedal_callback(self, name):
+        if self.connection is not None:
+            self.connection.remove_pedal_callback(name=name)
+
+    def open_orientation_dialog(self, target_id):
+        wx.CallAfter(Publisher.sendMessage, 'Open marker orientation dialog', marker_id=target_id)
 
     def set_markers(self, markers):
-        Publisher.sendMessage('Set markers', markers=markers)
+        wx.CallAfter(Publisher.sendMessage, 'Set markers', markers=markers)

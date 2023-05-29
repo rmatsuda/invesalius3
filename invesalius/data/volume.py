@@ -42,6 +42,7 @@ from vtkmodules.vtkRenderingVolume import (
     vtkFixedPointVolumeRayCastMapper,
     vtkGPUVolumeRayCastMapper,
 )
+from vtkmodules.vtkRenderingVolumeOpenGL2 import  vtkOpenGLGPUVolumeRayCastMapper
 
 
 from invesalius.pubsub import pub as Publisher
@@ -314,8 +315,7 @@ class Volume():
             factor = 1.0
             for n,i in enumerate(curve):
                 factor = abs(i['x'] - middle) / half
-                if factor < 0:
-                    factor = 0
+                factor = max(factor, 0)
                 i['x'] += shiftWL
                 if n < len(curve)/2.0:
                     i['x'] -= shiftWW * factor
@@ -523,7 +523,8 @@ class Volume():
                 raycasting_function = vtkVolumeRayCastCompositeFunction()
                 raycasting_function.SetCompositeMethodToInterpolateFirst()
 
-            if ses.Session().rendering == '0':
+            session = ses.Session()
+            if not session.GetConfig('rendering'):
                 self.volume_mapper.SetVolumeRayCastFunction(raycasting_function)
 
     def ApplyConvolution(self, imagedata, update_progress = None):
@@ -627,14 +628,14 @@ class Volume():
             volume_mapper.IntermixIntersectingGeometryOn()
             self.volume_mapper = volume_mapper
         else:
-
-            if int(ses.Session().rendering) == 0:
+            session = ses.Session()
+            if not session.GetConfig('rendering'):
                 volume_mapper = vtkFixedPointVolumeRayCastMapper()
                 #volume_mapper.AutoAdjustSampleDistancesOff()
                 self.volume_mapper = volume_mapper
                 volume_mapper.IntermixIntersectingGeometryOn()
             else:
-                volume_mapper = vtkGPUVolumeRayCastMapper()
+                volume_mapper = vtkOpenGLGPUVolumeRayCastMapper()
                 volume_mapper.UseJitteringOn()
                 self.volume_mapper = volume_mapper
 
@@ -743,7 +744,8 @@ class VolumeMask:
 
     def create_volume(self):
         if self._actor is None:
-            if int(ses.Session().rendering) == 0:
+            session = ses.Session()
+            if not session.GetConfig('rendering'):
                 self._volume_mapper = vtkFixedPointVolumeRayCastMapper()
                 #volume_mapper.AutoAdjustSampleDistancesOff()
                 self._volume_mapper.IntermixIntersectingGeometryOn()

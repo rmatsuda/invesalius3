@@ -9,6 +9,7 @@ from vtkmodules.vtkCommonDataModel import (
     vtkDataObject,
     vtkDataSetAttributes,
     vtkPolyData,
+    vtkPointLocator,
 )
 from vtkmodules.vtkCommonMath import vtkMatrix4x4
 from vtkmodules.vtkCommonTransforms import vtkTransform
@@ -30,11 +31,16 @@ from vtkmodules.vtkRenderingCore import (
     vtkPolyDataMapper,
     vtkWindowLevelLookupTable,
 )
-
+from vtkmodules.vtkCommonCore import (
+    vtkLookupTable,
+)
+from vtkmodules.vtkCommonColor import (
+    vtkColorSeries,
+    vtkNamedColors
+)
 import invesalius.data.slice_ as sl
 from invesalius.data.converters import to_vtk
 import invesalius.data.vtk_utils as vtk_utils
-
 
 class Brain:
     def __init__(self, n_peels, window_width, window_level, affine, inv_proj):
@@ -311,6 +317,28 @@ class Brain:
 
         return self.currentPeelActor
 
+class E_field_brain:
+    def __init__(self, e_field_mesh):
+        self.GetEfieldActor(e_field_mesh)
+
+    def GetEfieldActor(self, mesh):
+        self.e_field_mesh_normals = vtkFloatArray()
+        self.e_field_mesh_centers = vtkFloatArray()
+
+        self.locator_efield_Cell = vtkCellLocator()
+        self.locator_efield_Cell.SetDataSet(mesh)
+        self.locator_efield_Cell.BuildLocator()
+
+        self.locator_efield = vtkPointLocator()
+        self.locator_efield.SetDataSet(mesh)
+        self.locator_efield.BuildLocator()
+
+        self.e_field_mesh_normals = GetNormals(mesh)
+        self.e_field_mesh_centers = GetCenters(mesh)
+        self.e_field_mesh = mesh
+
+        self.efield_mapper = vtkPolyDataMapper()
+        self.lut = CreateLUTTableForEfield(0, 0.005)
 
 def GetCenters(mesh):
         # Compute centers of triangles
@@ -332,6 +360,14 @@ def GetNormals(mesh):
         # This converts to the normals to an array for easy access
         normals = normalComputer.GetOutput().GetCellData().GetNormals()
         return normals
+def CreateLUTTableForEfield(min, max):
+        lut = vtkLookupTable()
+        lut.SetTableRange(min, max)
+        colorSeries = vtkColorSeries()
+        seriesEnum = colorSeries.BREWER_SEQUENTIAL_YELLOW_ORANGE_BROWN_9
+        colorSeries.SetColorScheme(seriesEnum)
+        colorSeries.BuildLookupTable(lut, colorSeries.ORDINAL)
+        return lut
 
 def cleanMesh(inp):
     cleaned = vtkCleanPolyData()

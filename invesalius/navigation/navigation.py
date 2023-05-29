@@ -31,11 +31,12 @@ import invesalius.data.coregistration as dcr
 import invesalius.data.serial_port_connection as spc
 import invesalius.data.slice_ as sl
 import invesalius.data.tractography as dti
+import invesalius.data.e_field as e_field
 import invesalius.data.transformations as tr
 import invesalius.data.vtk_utils as vtk_utils
+import invesalius.session as ses
 from invesalius.pubsub import pub as Publisher
 from invesalius.utils import Singleton
-
 
 class QueueCustom(queue.Queue):
     """
@@ -83,8 +84,8 @@ class UpdateNavigationScene(threading.Thread):
         """
 
         threading.Thread.__init__(self, name='UpdateScene')
-        self.serial_port_enabled, self.view_tracts, self.peel_loaded = vis_components
-        self.coord_queue, self.serial_port_queue, self.tracts_queue, self.icp_queue = vis_queues
+        self.serial_port_enabled, self.view_tracts, self.peel_loaded, self.e_field_loaded = vis_components
+        self.coord_queue, self.serial_port_queue, self.tracts_queue, self.icp_queue, self.e_field_norms_queue, self.e_field_IDs_queue = vis_queues
         self.sle = sle
         self.event = event
         self.neuronavigation_api = neuronavigation_api
@@ -93,11 +94,12 @@ class UpdateNavigationScene(threading.Thread):
         # count = 0
         while not self.event.is_set():
             got_coords = False
+            object_visible_flag = False
             try:
                 coord, markers_flag, m_img, view_obj = self.coord_queue.get_nowait()
                 got_coords = True
+                object_visible_flag = markers_flag[2]
 
-                # print('UpdateScene: get {}'.format(count))
 
                 # use of CallAfter is mandatory otherwise crashes the wx interface
                 if self.view_tracts:
@@ -118,26 +120,32 @@ class UpdateNavigationScene(threading.Thread):
                 # see the red cross in the position of the offset marker
                 wx.CallAfter(Publisher.sendMessage, 'Update slices position', position=coord[:3])
                 wx.CallAfter(Publisher.sendMessage, 'Set cross focal point', position=coord)
-                wx.CallAfter(Publisher.sendMessage, 'Update slice viewer')
                 wx.CallAfter(Publisher.sendMessage, 'Sensor ID', markers_flag=markers_flag)
+
+                if self.e_field_loaded and object_visible_flag:
+                    wx.CallAfter(Publisher.sendMessage, 'Update point location for e-field calculation', m_img=m_img,
+                                 coord=coord, queue_IDs=self.e_field_IDs_queue)
+                    if not self.e_field_norms_queue.empty():
+                        try:
+                            enorm = self.e_field_norms_queue.get_nowait()
+                            wx.CallAfter(Publisher.sendMessage, 'Get enorm', enorm=enorm)
+                        finally:
+                            self.e_field_norms_queue.task_done()
 
                 if view_obj:
                     wx.CallAfter(Publisher.sendMessage, 'Update object matrix', m_img=m_img, coord=coord)
                     wx.CallAfter(Publisher.sendMessage, 'Update object arrow matrix', m_img=m_img, coord=coord, flag= self.peel_loaded)
 
-                self.neuronavigation_api.update_coil_pose(
-                    position=coord[:3],
-                    orientation=coord[3:],
-                )
-
+                wx.CallAfter(Publisher.sendMessage, 'Render volume viewer')
+                wx.CallAfter(Publisher.sendMessage, 'Update slice viewer')
                 self.coord_queue.task_done()
                 # print('UpdateScene: done {}'.format(count))
                 # count += 1
-
-                sleep(self.sle)
             except queue.Empty:
                 if got_coords:
                     self.coord_queue.task_done()
+
+            sleep(self.sle)
 
 
 class Navigation(metaclass=Singleton):
@@ -145,18 +153,20 @@ class Navigation(metaclass=Singleton):
         self.pedal_connection = pedal_connection
         self.neuronavigation_api = neuronavigation_api
 
-        self.image_fiducials = np.full([3, 3], np.nan)
         self.correg = None
         self.target = None
-        self.obj_reg = None
+        self.object_registration = None
         self.track_obj = False
         self.m_change = None
+        self.obj_data = None
         self.all_fiducials = np.zeros((6, 6))
-
         self.event = threading.Event()
         self.coord_queue = QueueCustom(maxsize=1)
         self.icp_queue = QueueCustom(maxsize=1)
         self.object_at_target_queue = QueueCustom(maxsize=1)
+        self.efield_queue = QueueCustom(maxsize=1)
+        self.e_field_norms_queue = QueueCustom(maxsize=1)
+        self.e_field_IDs_queue = QueueCustom(maxsize=1)
         # self.visualization_queue = QueueCustom(maxsize=1)
         self.serial_port_queue = QueueCustom(maxsize=1)
         self.coord_tracts_queue = QueueCustom(maxsize=1)
@@ -164,6 +174,9 @@ class Navigation(metaclass=Singleton):
 
         # Tracker parameters
         self.ref_mode_id = const.DEFAULT_REF_MODE
+
+        self.e_field_loaded = False
+        self.debug_efield_enorm = None
 
         # Tractography parameters
         self.trk_inp = None
@@ -188,11 +201,47 @@ class Navigation(metaclass=Singleton):
         self.lock_to_target = False
         self.coil_at_target = False
 
+        self.LoadState()
+
         self.__bind_events()
 
     def __bind_events(self):
         Publisher.subscribe(self.CoilAtTarget, 'Coil at target')
         Publisher.subscribe(self.UpdateSerialPort, 'Update serial port')
+        Publisher.subscribe(self.UpdateObjectRegistration, 'Update object registration')
+        Publisher.subscribe(self.TrackObject, 'Track object')
+
+    def SaveState(self):
+        # XXX: This shouldn't be needed, but task_navigator.py currently calls UpdateObjectRegistration with
+        #   None parameter when the project is closed, crashing without this checks.
+        if self.object_registration is None:
+            return
+
+        object_fiducials, object_orientations, object_reference_mode, object_name = self.object_registration
+
+        state = {
+            'object_fiducials': object_fiducials.tolist(),
+            'object_orientations': object_orientations.tolist(),
+            'object_reference_mode': object_reference_mode,
+            'object_name': object_name.decode(const.FS_ENCODE),
+        }
+
+        session = ses.Session()
+        session.SetState('navigation', state)
+
+    def LoadState(self):
+        session = ses.Session()
+        state = session.GetState('navigation')
+
+        if state is None:
+            return
+
+        object_fiducials = np.array(state['object_fiducials'])
+        object_orientations = np.array(state['object_orientations'])
+        object_reference_mode = state['object_reference_mode']
+        object_name = state['object_name'].encode(const.FS_ENCODE)
+
+        self.object_registration = (object_fiducials, object_orientations, object_reference_mode, object_name)
 
     def CoilAtTarget(self, state):
         self.coil_at_target = state
@@ -206,6 +255,14 @@ class Navigation(metaclass=Singleton):
         self.com_port = com_port
         self.baud_rate = baud_rate
 
+    def UpdateObjectRegistration(self, data=None):
+        self.object_registration = data
+
+        self.SaveState()
+
+    def TrackObject(self, enabled=False):
+        self.track_obj = enabled
+
     def SetLockToTarget(self, value):
         self.lock_to_target = value
 
@@ -215,18 +272,11 @@ class Navigation(metaclass=Singleton):
     def GetReferenceMode(self):
         return self.ref_mode_id
 
-    def SetImageFiducial(self, fiducial_index, coord):
-        self.image_fiducials[fiducial_index, :] = coord
-
-        print("Set image fiducial {} to coordinates {}".format(fiducial_index, coord))
-
-    def AreImageFiducialsSet(self):
-        return not np.isnan(self.image_fiducials).any()
-
-    def UpdateFiducialRegistrationError(self, tracker):
+    def UpdateFiducialRegistrationError(self, tracker, image):
         tracker_fiducials, tracker_fiducials_raw = tracker.GetTrackerFiducials()
+        image_fiducials = image.GetImageFiducials()
 
-        self.all_fiducials = np.vstack([self.image_fiducials, tracker_fiducials])
+        self.all_fiducials = np.vstack([image_fiducials, tracker_fiducials])
 
         self.fre = db.calculate_fre(tracker_fiducials_raw, self.all_fiducials, self.ref_mode_id, self.m_change)
 
@@ -244,9 +294,11 @@ class Navigation(metaclass=Singleton):
         if state and permission_to_stimulate:
             self.serial_port_connection.SendPulse()
 
-    def EstimateTrackerToInVTransformationMatrix(self, tracker):
+    def EstimateTrackerToInVTransformationMatrix(self, tracker, image):
         tracker_fiducials, tracker_fiducials_raw = tracker.GetTrackerFiducials()
-        self.all_fiducials = np.vstack([self.image_fiducials, tracker_fiducials])
+        image_fiducials = image.GetImageFiducials()
+
+        self.all_fiducials = np.vstack([image_fiducials, tracker_fiducials])
 
         self.m_change = tr.affine_matrix_from_points(self.all_fiducials[3:, :].T, self.all_fiducials[:3, :].T,
                                                 shear=False, scale=False)
@@ -258,22 +310,22 @@ class Navigation(metaclass=Singleton):
         if self.event.is_set():
             self.event.clear()
 
-        vis_components = [self.serial_port_in_use, self.view_tracts, self.peel_loaded]
-        vis_queues = [self.coord_queue, self.serial_port_queue, self.tracts_queue, self.icp_queue]
+        vis_components = [self.serial_port_in_use, self.view_tracts, self.peel_loaded, self.e_field_loaded]
+        vis_queues = [self.coord_queue, self.serial_port_queue, self.tracts_queue, self.icp_queue, self.e_field_norms_queue, self.e_field_IDs_queue]
 
         Publisher.sendMessage("Navigation status", nav_status=True, vis_status=vis_components)
         errors = False
 
         if self.track_obj:
             # if object tracking is selected
-            if self.obj_reg is None:
+            if self.object_registration is None:
                 # check if object registration was performed
                 wx.MessageBox(_("Perform coil registration before navigation."), _("InVesalius 3"))
                 errors = True
             else:
                 # if object registration was correctly performed continue with navigation
-                # obj_reg[0] is object 3x3 fiducial matrix and obj_reg[1] is 3x3 orientation matrix
-                obj_fiducials, obj_orients, obj_ref_mode, obj_name = self.obj_reg
+                # object_registration[0] is object 3x3 fiducial matrix and object_registration[1] is 3x3 orientation matrix
+                obj_fiducials, obj_orients, obj_ref_mode, obj_name = self.object_registration
 
                 coreg_data = [self.m_change, obj_ref_mode]
 
@@ -282,20 +334,20 @@ class Navigation(metaclass=Singleton):
                 else:
                     coord_raw = np.array([None])
 
-                obj_data = db.object_registration(obj_fiducials, obj_orients, coord_raw, self.m_change)
-                coreg_data.extend(obj_data)
+                self.obj_data = db.object_registration(obj_fiducials, obj_orients, coord_raw, self.m_change)
+                coreg_data.extend(self.obj_data)
 
-                queues = [self.coord_queue, self.coord_tracts_queue, self.icp_queue, self.object_at_target_queue]
+                queues = [self.coord_queue, self.coord_tracts_queue, self.icp_queue, self.object_at_target_queue, self.efield_queue]
                 jobs_list.append(dcr.CoordinateCorregistrate(self.ref_mode_id, tracker, coreg_data,
                                                                 self.view_tracts, queues,
                                                                 self.event, self.sleep_nav, tracker.tracker_id,
-                                                                self.target, icp))
+                                                                self.target, icp, self.e_field_loaded))
         else:
             coreg_data = (self.m_change, 0)
-            queues = [self.coord_queue, self.coord_tracts_queue, self.icp_queue]
+            queues = [self.coord_queue, self.coord_tracts_queue, self.icp_queue, self.efield_queue]
             jobs_list.append(dcr.CoordinateCorregistrateNoObject(self.ref_mode_id, tracker, coreg_data,
                                                                     self.view_tracts, queues,
-                                                                    self.event, self.sleep_nav, icp))
+                                                                    self.event, self.sleep_nav, icp, self.e_field_loaded))
 
         if not errors:
             #TODO: Test the serial port thread
@@ -335,6 +387,12 @@ class Navigation(metaclass=Singleton):
                 else:
                     jobs_list.append(dti.ComputeTractsThread(self.trk_inp, queues, self.event, self.sleep_nav))
 
+            if self.e_field_loaded:
+                queues = [self.efield_queue, self.e_field_norms_queue, self.e_field_IDs_queue]
+                jobs_list.append(e_field.Visualize_E_field_Thread(queues, self.event, 2*self.sleep_nav,
+                                                                  self.neuronavigation_api, self.debug_efield_enorm))
+
+
             jobs_list.append(
                 UpdateNavigationScene(
                     vis_queues=vis_queues,
@@ -353,11 +411,17 @@ class Navigation(metaclass=Singleton):
             if self.pedal_connection is not None:
                 self.pedal_connection.add_callback(name='navigation', callback=self.PedalStateChanged)
 
+            if self.neuronavigation_api is not None:
+                self.neuronavigation_api.add_pedal_callback(name='navigation', callback=self.PedalStateChanged)
+
     def StopNavigation(self):
         self.event.set()
 
         if self.pedal_connection is not None:
             self.pedal_connection.remove_callback(name='navigation')
+
+        if self.neuronavigation_api is not None:
+            self.neuronavigation_api.remove_pedal_callback(name='navigation')
 
         self.coord_queue.clear()
         self.coord_queue.join()
@@ -376,5 +440,16 @@ class Navigation(metaclass=Singleton):
             self.tracts_queue.clear()
             self.tracts_queue.join()
 
-        vis_components = [self.serial_port_in_use, self.view_tracts,  self.peel_loaded]
+        if self.e_field_loaded:
+            self.efield_queue.clear()
+            self.efield_queue.join()
+
+            self.e_field_norms_queue.clear()
+            self.e_field_norms_queue.join()
+
+            self.e_field_IDs_queue.clear()
+            self.e_field_IDs_queue.join()
+
+
+        vis_components = [self.serial_port_in_use, self.view_tracts,  self.peel_loaded, self.e_field_loaded]
         Publisher.sendMessage("Navigation status", nav_status=False, vis_status=vis_components)

@@ -18,7 +18,6 @@
 # --------------------------------------------------------------------------
 
 import math
-import os
 import sys
 import tempfile
 
@@ -35,15 +34,10 @@ from vtkmodules.vtkImagingGeneral import vtkImageGaussianSmooth
 from vtkmodules.vtkInteractionImage import vtkImageViewer
 from vtkmodules.vtkIOXML import vtkXMLImageDataReader, vtkXMLImageDataWriter
 
-from invesalius.pubsub import pub as Publisher
-import invesalius.constants as const
 import invesalius.data.converters as converters
 import invesalius.data.coordinates as dco
 import invesalius.data.slice_ as sl
-import invesalius.data.transformations as tr
 import invesalius.reader.bitmap_reader as bitmap_reader
-import invesalius.utils as utils
-from invesalius import inv_paths
 from invesalius.data import vtk_utils as vtk_utils
 from skimage.color import rgb2gray
 
@@ -521,9 +515,14 @@ def img2memmap(group):
 
     temp_file = tempfile.mktemp()
 
-    data = group.get_data()
-    # Normalize image pixel values and convert to int16
-    #  data = imgnormalize(data)
+    data = group.get_fdata()
+
+    # if scalar range is larger than uint16 maximum number, the image needs
+    # to be rescalaed so that no negative values are created when converting to int16
+    # maximum of 10000 was selected arbitrarily by testing with one MRI example
+    # alternatively could test if "data.dtype == 'float64'" but maybe it is too specific
+    if numpy.ptp(data) > (2**16/2-1):
+        data = image_normalize(data, min_=0, max_=10000, output_dtype=np.int16)
 
     # Convert RAS+ to default InVesalius orientation ZYX
     data = numpy.swapaxes(data, 0, 2)

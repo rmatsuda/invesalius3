@@ -55,6 +55,10 @@ def object_marker_to_center(coord_raw, obj_ref_mode, t_obj_raw, s0_raw, r_s0_raw
     t_offset = np.identity(4)
     t_offset[:, -1] = t_offset_aux[:, -1]
     t_probe = s0_raw @ t_offset @ np.linalg.inv(s0_raw) @ t_probe_raw
+    ## t_offset_aux = np.linalg.inv(r_s0_raw) @ r_probe @ t_obj_raw
+    ##t_offset = np.identity(4)
+    ##t_offset[:, -1] = t_offset_aux[:, -1]
+    ##t_probe_raw = s0_raw @ np.linalg.inv(t_offset) @ np.linalg.inv(s0_raw) @ t_probe
     m_probe = tr.concatenate_matrices(t_probe, r_probe)
 
     return m_probe
@@ -102,30 +106,64 @@ def tracker_to_image(m_change, m_probe_ref, r_obj_img, m_obj_raw, s0_dyn):
     return m_img
 
 
-def image_to_tracker(m_change, target, icp):
-    """Compute the transformation matrix to the tracker coordinate system
+def image_to_tracker(m_change, coord_raw, target, icp, obj_data):
+    """Compute the transformation matrix to the tracker coordinate system.
+    The transformation matrix is splitted in two steps, one for rotation and one for translation
 
-    :param m_change: Corregistration transformation obtained from fiducials
+    :param m_change: Coregistration transformation obtained from fiducials.
+                        Transforms from tracker coordinate system in head base to img coordinate system
     :type m_change: numpy.ndarray
+    :param coord_raw: Probe, head and coil in tracker coordinate system
+    :type target: numpy.ndarray
     :param target: Target in invesalius coordinate system
     :type target: numpy.ndarray
     :param icp: ICP transformation matrix
     :type icp: numpy.ndarray
+    :param obj_data: Transformations matrices for coil
+    :type obj_data: list of numpy.ndarray
 
-    :return: 4 x 4 numpy double array
+    :return: The transformation matrices from invesalius coordinate system to tracker coordinate system
     :rtype: numpy.ndarray
     """
+    t_obj_raw, s0_raw, r_s0_raw, s0_dyn, m_obj_raw, r_obj_img = obj_data
     m_target_in_image = dco.coordinates_to_transformation_matrix(
         position=target[:3],
-        orientation=[0, 0, 0],
+        orientation=target[3:],
         axes='sxyz',
     )
     if icp.use_icp:
         m_target_in_image = bases.inverse_transform_icp(m_target_in_image, icp.m_icp)
-    m_target_in_tracker = np.linalg.inv(m_change) @ m_target_in_image
+
+    # transform from invesalius coordinate system to tracker coordinate system. This transformation works from for translation
+    m_trk = np.linalg.inv(m_change) @ m_target_in_image
 
     # invert y coordinate
-    m_target_in_tracker[2, -1] = -m_target_in_tracker[2, -1]
+    m_trk_flip = m_trk.copy()
+    m_trk_flip[2, -1] = -m_trk_flip[2, -1]
+    # finds the inverse rotation matrix from invesalius coordinate system to head base in tracker coordinate system
+    m_probe_ref = s0_dyn @ m_obj_raw @ np.linalg.inv(r_obj_img) @ m_target_in_image @ np.linalg.inv(m_obj_raw)
+    m_trk_flip[:3, :3] = m_probe_ref[:3, :3]
+
+    m_ref = dco.coordinates_to_transformation_matrix(
+        position=coord_raw[1, :3],
+        orientation=coord_raw[1, 3:],
+        axes='rzyx',
+    )
+    # transform from head base to raw tracker coordinate system
+    m_probe = m_ref @ m_trk_flip
+    t_probe = np.identity(4)
+    t_probe[:, -1] = m_probe[:, -1]
+    r_probe = np.identity(4)
+    r_probe[:, :3] = m_probe[:, :3]
+    # translate object center to raw tracker coordinate system
+    t_offset_aux = np.linalg.inv(r_s0_raw) @ r_probe @ t_obj_raw
+    t_offset = np.identity(4)
+    t_offset[:, -1] = t_offset_aux[:, -1]
+    t_probe_raw = s0_raw @ np.linalg.inv(t_offset) @ np.linalg.inv(s0_raw) @ t_probe
+
+    m_target_in_tracker = np.identity(4)
+    m_target_in_tracker[:, -1] = t_probe_raw[:, -1]
+    m_target_in_tracker[:3, :3] = r_probe[:3, :3]
 
     return m_target_in_tracker
 
@@ -207,9 +245,33 @@ def apply_icp(m_img, icp):
 
     return m_img
 
+def ComputeRelativeDistanceToTarget(target_coord=None, img_coord=None, m_target=None, m_img=None):
+    if m_target is None:
+        m_target = dco.coordinates_to_transformation_matrix(
+            position=target_coord[:3],
+            orientation=target_coord[3:],
+            axes='sxyz',
+        )
+    if m_img is None:
+        m_img = dco.coordinates_to_transformation_matrix(
+            position=img_coord[:3],
+            orientation=img_coord[3:],
+            axes='sxyz',
+        )
+    m_relative_target = np.linalg.inv(m_target) @ m_img
+
+    # compute rotation angles
+    angles = tr.euler_from_matrix(m_relative_target, axes='sxyz')
+
+    # create output coordinate list
+    distance = [m_relative_target[0, -1], m_relative_target[1, -1], m_relative_target[2, -1], \
+            np.degrees(angles[0]), np.degrees(angles[1]), np.degrees(angles[2])]
+
+    return distance
+
 
 class CoordinateCorregistrate(threading.Thread):
-    def __init__(self, ref_mode_id, tracker, coreg_data, view_tracts, queues, event, sle, tracker_id, target, icp):
+    def __init__(self, ref_mode_id, tracker, coreg_data, view_tracts, queues, event, sle, tracker_id, target, icp,e_field_loaded):
         threading.Thread.__init__(self, name='CoordCoregObject')
         self.ref_mode_id = ref_mode_id
         self.tracker = tracker
@@ -217,6 +279,8 @@ class CoordinateCorregistrate(threading.Thread):
         self.coord_queue = queues[0]
         self.view_tracts = view_tracts
         self.coord_tracts_queue = queues[1]
+        self.efield_queue = queues[4]
+        self.e_field_loaded = e_field_loaded
         self.event = event
         self.sle = sle
         self.icp_queue = queues[2]
@@ -240,8 +304,6 @@ class CoordinateCorregistrate(threading.Thread):
     def run(self):
         coreg_data = self.coreg_data
         view_obj = 1
-
-        trck_init, trck_id = self.tracker.GetTrackerInfo()
 
         # print('CoordCoreg: event {}'.format(self.event.is_set()))
         while not self.event.is_set():
@@ -286,17 +348,18 @@ class CoordinateCorregistrate(threading.Thread):
 
                 if self.view_tracts:
                     self.coord_tracts_queue.put_nowait(m_img_flip)
-
+                if self.e_field_loaded:
+                    self.efield_queue.put_nowait([m_img, coord])
                 if not self.icp_queue.empty():
                     self.icp_queue.task_done()
-                # The sleep has to be in both threads
-                sleep(self.sle)
             except queue.Full:
                 pass
+            # The sleep has to be in both threads
+            sleep(self.sle)
 
 
 class CoordinateCorregistrateNoObject(threading.Thread):
-    def __init__(self, ref_mode_id, tracker, coreg_data, view_tracts, queues, event, sle, icp):
+    def __init__(self, ref_mode_id, tracker, coreg_data, view_tracts, queues, event, sle, icp, e_field_loaded):
         threading.Thread.__init__(self, name='CoordCoregNoObject')
         self.ref_mode_id = ref_mode_id
         self.tracker = tracker
@@ -309,12 +372,13 @@ class CoordinateCorregistrateNoObject(threading.Thread):
         self.icp_queue = queues[2]
         self.use_icp = icp.use_icp
         self.m_icp = icp.m_icp
+        self.efield_queue = queues[3]
+        self.e_field_loaded = e_field_loaded
 
     def run(self):
         coreg_data = self.coreg_data
         view_obj = 0
 
-        trck_init, trck_id = self.tracker.GetTrackerInfo()
         # print('CoordCoreg: event {}'.format(self.event.is_set()))
         while not self.event.is_set():
             try:
@@ -334,13 +398,14 @@ class CoordinateCorregistrateNoObject(threading.Thread):
 
                 if self.view_tracts:
                     self.coord_tracts_queue.put_nowait(m_img_flip)
-
+                if self.e_field_loaded:
+                    self.efield_queue.put_nowait([m_img, coord])
                 if not self.icp_queue.empty():
                     self.icp_queue.task_done()
-                # The sleep has to be in both threads
-                sleep(self.sle)
             except queue.Full:
                 pass
+            # The sleep has to be in both threads
+            sleep(self.sle)
 
 
 # class CoregistrationStatic(threading.Thread):
