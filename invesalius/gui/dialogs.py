@@ -5886,10 +5886,10 @@ class CreateTransformationMatrix(wx.Dialog):
         try:
             camera_coord_list = np.stack(self.camera_coord_matrix_list[1:], axis=2)
             coord_coil_list = np.stack(self.tracker_coord_matrix_list[1:], axis=2)
-            X_est, Y_est, Y_est_check, ErrorStats = self.tracker.trk_init[0][1].matrices_estimation(
+            X_est, Y_est, Y_est_check, ErrorStats = self.tracker.tracker_connection.GetConnectionCamera().matrices_estimation(
                 coord_coil_list, camera_coord_list)
 
-            affine_matrix_camera_to_tracker = self.tracker.trk_init[0][1].AffineTransformation(np.array(self.tracker_coord_list), np.array(self.camera_coord_list))
+            affine_matrix_camera_to_tracker = self.tracker.tracker_connection.GetConnectionCamera().AffineTransformation(np.array(self.tracker_coord_list), np.array(self.camera_coord_list))
 
             self.matrix_camera_to_tracker = X_est, Y_est, affine_matrix_camera_to_tracker
 

@@ -32,6 +32,7 @@ from invesalius.pubsub import pub as Publisher
 class TrackerConnection():
     def __init__(self, model=None):
         self.connection = None
+        self.connection_camera = None
         self.configuration = None
         self.model = model
 
@@ -56,6 +57,9 @@ class TrackerConnection():
         # TODO: It would be cleaner to compare self.connection to None here; however, currently it can also have
         #   True and False values. Hence, return the connection object as a whole for now.
         return self.connection
+
+    def GetConnectionCamera(self):
+        return self.connection_camera
 
     def GetConnection(self):
         # TODO: A nicer API would not expose connection object to outside, but instead use it directly to reply to queries
@@ -357,24 +361,67 @@ class CameraTrackerConnection(TrackerConnection):
         super().__init__(model)
 
     def Configure(self):
-        return True
+        select_tracker_dialog = dlg.SetTrackerDeviceToRobot()
+        status = select_tracker_dialog.ShowModal()
+
+        success = False
+
+        if status == ID_OK:
+            tracker_id = select_tracker_dialog.GetValue()
+            if tracker_id:
+                connection = CreateTrackerConnection(tracker_id)
+                connection.Configure()
+                connection.Connect()
+
+                self.configuration = {
+                    'tracker_id': tracker_id,
+                    'tracker_configuration': connection.GetConfiguration(),
+                }
+                self.connection = connection
+
+                success = True
+
+            select_tracker_dialog.Destroy()
+
+        return success
 
     def Connect(self):
+        assert self.configuration is not None, "No configuration defined"
+
+        tracker_id = self.configuration['tracker_id']
+        tracker_configuration = self.configuration['tracker_configuration']
+
+        if self.connection is None:
+            self.connection = CreateTrackerConnection(tracker_id)
+            self.connection.SetConfiguration(tracker_configuration)
         try:
-            import invesalius.data.camera_tracker as cam
+            from cameratracker import cameratracker as cam
 
             connection = cam.camera()
-            connection.Initialize()
+            connection.Initialize(connection)
             print('Connected to camera tracking device.')
 
             lib_mode = 'wrapper'
 
-            self.connection = connection
+            self.connection_camera = connection
         except:
             print('Could not connect to camera tracker.')
             lib_mode = 'error'
 
         self.lib_mode = lib_mode
+
+    def GetTrackerId(self):
+        tracker_id = self.configuration['tracker_id']
+        return tracker_id
+
+    def GetConnectionCamera(self):
+        return self.connection_camera
+
+    def GetConnection(self):
+        # XXX: This is a bit convoluted logic, so here's a short explanation: in other cases, self.connection
+        #   is the object which can be used to communicate with the tracker directly. However, when using robot,
+        #   self.connection is another TrackerConnection object, hence forward the query to that object.
+        return self.connection.GetConnection()
 
     def Disconnect(self):
         super().Disconnect()
@@ -408,7 +455,7 @@ class PolarisTrackerConnection(TrackerConnection):
 
     def Connect(self):
         assert self.configuration is not None, "No configuration defined"
-
+        print("Connect")
         try:
             if sys.platform == 'win32':
                 import pypolaris

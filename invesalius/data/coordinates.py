@@ -203,12 +203,15 @@ def PolarisCoord(tracker_connection, tracker_id, ref_mode):
 
 
 def CameraCoord(tracker_connection, tracker_id, ref_mode):
-    trck = tracker_connection.GetConnection()
-    coord, probeID, refID, coilID = trck.Run()
-    #return np.vstack([coord_tracker[0], coord[1], coord_tracker[2], coord_tracker[1]]), \
-    #    [markers_flag[0], refID, markers_flag[2], markers_flag[1]]
+    trck = tracker_connection.GetConnectionCamera()
+    coord, markers_flag_camera = trck.CameraCoordinates.GetCoordinates()
+    probeID, refID, coilID = markers_flag_camera
+    ref = coord[1]
 
-    return coord, [probeID, refID, coilID]
+    tracker_id = tracker_connection.GetTrackerId()
+    coord_tracker, markers_flag = GetCoordinatesForThread(tracker_connection, tracker_id, ref_mode)
+
+    return np.vstack([coord_tracker[0], ref, coord_tracker[2], coord_tracker[1]]), [markers_flag[0], refID, markers_flag[2], markers_flag[1]]
 
 def ClaronCoord(tracker_connection, tracker_id, ref_mode):
     trck = tracker_connection.GetConnection()
