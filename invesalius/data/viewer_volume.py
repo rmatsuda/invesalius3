@@ -899,6 +899,7 @@ class Viewer(wx.Panel):
             obj_roll.SetPosition(0, 25, -30)
             obj_roll.RotateX(-60)
             obj_roll.RotateZ(180)
+            obj_roll.SetScale(2,2,2)
 
             obj_yaw = vtkActor()
             obj_yaw.SetMapper(mapper)
@@ -908,6 +909,7 @@ class Viewer(wx.Panel):
             # obj_yaw.GetProperty().SetSpecularPower(80)
             obj_yaw.SetPosition(0, -115, 5)
             obj_yaw.RotateZ(180)
+            obj_yaw.SetScale(2, 2, 2)
 
             obj_pitch = vtkActor()
             obj_pitch.SetMapper(mapper)
@@ -915,9 +917,10 @@ class Viewer(wx.Panel):
             # obj_pitch.GetProperty().SetDiffuseColor(vtk_colors.GetColor3d('GhostWhite'))
             # obj_pitch.GetProperty().SetSpecular(30)
             # obj_pitch.GetProperty().SetSpecularPower(80)
-            obj_pitch.SetPosition(5, -265, 5)
+            obj_pitch.SetPosition(15, -302, 5)
             obj_pitch.RotateY(90)
             obj_pitch.RotateZ(180)
+            obj_pitch.SetScale(2, 2, 2)
 
             arrow_roll_z1 = self.CreateArrowActor([-50, -35, 12], [-50, -35, 50])
             arrow_roll_z1.GetProperty().SetColor(1, 1, 0)
