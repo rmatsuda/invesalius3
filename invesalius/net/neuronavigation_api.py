@@ -66,7 +66,7 @@ class NeuronavigationApi(metaclass=Singleton):
 
     def __bind_events(self):
         Publisher.subscribe(self.update_coil_at_target, 'Coil at target')
-        Publisher.subscribe(self.update_focus, 'Set cross focal point')
+        #Publisher.subscribe(self.update_focus, 'Set cross focal point')
         Publisher.subscribe(self.update_target_orientation, 'Update target orientation')
 
     # Functions for InVesalius to send updates.
@@ -129,6 +129,30 @@ class NeuronavigationApi(metaclass=Singleton):
         if self.connection is not None:
             self.connection.update_coil_at_target(
                 state=state
+            )
+
+    def initialize_efield(self, cortex_model_path, mesh_models_paths, coil_model_path, conductivities_inside, conductivities_outside):
+        if self.connection is not None:
+            return self.connection.initialize_efield(
+                cortex_model_path=cortex_model_path,
+                mesh_models_paths= mesh_models_paths,
+                coil_model_path =coil_model_path,
+                conductivities_inside= conductivities_inside,
+                conductivities_outside = conductivities_outside,
+            )
+        return None
+
+    def init_efield_config_file(self, config_file):
+        if self.connection is not None:
+            return self.connection.init_efield_json(
+                config_file=config_file
+            )
+        return None
+
+    def efield_coil(self, coil_model_path):
+        if self.connection is not None:
+            return self.connection.set_coil(
+                coil_model_path=coil_model_path
             )
 
     def update_efield(self, position, orientation, T_rot):
