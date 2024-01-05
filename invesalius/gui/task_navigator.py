@@ -2257,6 +2257,10 @@ class MarkersPanel(wx.Panel):
 
     def OnItemBlink(self, evt):
         Publisher.sendMessage('Blink Marker', index=self.marker_list_ctrl.GetFocusedItem())
+        x, y, z = self.markers[self.marker_list_ctrl.GetFocusedItem()].position
+        rx, ry, rz = self.markers[self.marker_list_ctrl.GetFocusedItem()].orientation
+        Publisher.sendMessage('Set cross focal point', position=[x, y, z, rx, ry, rz])
+        Publisher.sendMessage('Update slice viewer')
 
     def OnStopItemBlink(self, evt):
         Publisher.sendMessage('Stop Blink Marker')
