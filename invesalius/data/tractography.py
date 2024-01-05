@@ -29,17 +29,24 @@ import time
 
 import numpy as np
 from vtkmodules.vtkCommonCore import vtkPoints, vtkUnsignedCharArray
+from vtkmodules.vtkCommonTransforms import vtkTransform
 from vtkmodules.vtkCommonDataModel import (
     vtkCellArray,
     vtkMultiBlockDataSet,
     vtkPolyData,
 )
-from vtkmodules.vtkFiltersCore import vtkTubeFilter
+from vtkmodules.vtkFiltersCore import (
+    vtkCleanPolyData,
+    vtkTriangleFilter,
+    vtkTubeFilter
+)
+from vtkmodules.vtkFiltersGeneral import vtkBooleanOperationPolyDataFilter, vtkTransformPolyDataFilter
 
 from invesalius.pubsub import pub as Publisher
 
 import invesalius.constants as const
 import invesalius.data.imagedata_utils as img_utils
+from invesalius.project import Project
 
 # Nice print for arrays
 # np.set_printoptions(precision=2)
@@ -198,6 +205,47 @@ def compute_and_visualize_tracts(trekker, position, affine, affine_vtk, n_tracts
         n_tracts += len(trk_list)
         if len(trk_list):
             branch = compute_tracts(trk_list, n_tract=0, alpha=alpha)
+
+            booleanOperation = vtkBooleanOperationPolyDataFilter()
+            booleanOperation.SetOperationToIntersection()
+
+            ###Attention! Gets the surface with index 0
+            roi = Project().surface_dict[0].polydata
+            print(Project().surface_dict[0].name)
+            tri1 = vtkTriangleFilter()
+            tri1.SetInputData(roi)
+            clean1 = vtkCleanPolyData()
+            clean1.SetInputConnection(tri1.GetOutputPort())
+            clean1.Update()
+            input1 = clean1.GetOutput()
+
+            transform = vtkTransform()
+            transform.SetMatrix(affine_vtk)
+            for i in range(branch.GetNumberOfBlocks()):
+                fil = vtkTransformPolyDataFilter()
+                fil.SetTransform(transform)
+                fil.SetInputDataObject(branch.GetBlock(i))
+                fil.Update()
+
+                tri2 = vtkTriangleFilter()
+                tri2.SetInputData(fil.GetOutput())
+                tri2.Update()
+                clean2 = vtkCleanPolyData()
+                clean2.SetInputConnection(tri2.GetOutputPort())
+                clean2.Update()
+                input2 = clean2.GetOutput()
+
+                booleanOperation.SetInputData(0, input1)
+                booleanOperation.SetInputData(1, input2)
+                booleanOperation.Update()
+
+                if booleanOperation.GetOutput().GetPointData().GetNumberOfArrays() > 1:
+                    print('intersection!!!!!')
+                    print('branch block: ', i)
+                    print('n_branches: ', n_branches)
+                else:
+                    print('no intersection')
+
             bundle.SetBlock(n_branches, branch)
             n_branches += 1
 
