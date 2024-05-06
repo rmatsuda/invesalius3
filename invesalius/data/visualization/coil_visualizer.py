@@ -4,10 +4,17 @@ import invesalius.data.coordinates as dco
 import invesalius.constants as const
 import invesalius.data.vtk_utils as vtku
 import invesalius.data.polydata_utils as pu
+import numpy as np
 
 from invesalius.pubsub import pub as Publisher
 import invesalius.session as ses
-
+from invesalius.project import Project
+from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
+from vtkmodules.vtkCommonDataModel import (
+    vtkIterativeClosestPointTransform,
+    vtkPolyData,
+)
+from vtkmodules.vtkCommonCore import vtkPoints
 
 class CoilVisualizer:
     """
@@ -149,6 +156,11 @@ class CoilVisualizer:
         # If enabled, add a new coil actor.
         if enabled:
             self.AddCoilActor(self.coil_path)
+            inv_proj = Project()
+            try:
+                self.brain_surface = inv_proj.surface_dict[0].polydata
+            except:
+                None
 
     # Called when 'show coil' button is pressed in the user interface.
     def ShowCoil(self, state):
@@ -269,11 +281,44 @@ class CoilVisualizer:
         self.renderer.AddActor(self.y_axis_actor)
         self.renderer.AddActor(self.z_axis_actor)
 
-        self.x_axis_actor.SetVisibility(0)
-        self.y_axis_actor.SetVisibility(0)
-        self.z_axis_actor.SetVisibility(0)
+        self.x_axis_actor.SetVisibility(1)
+        self.y_axis_actor.SetVisibility(1)
+        self.z_axis_actor.SetVisibility(1)
 
     def UpdateCoilPose(self, m_img, coord):
+        def ICP(coord, surface):
+            """
+            Apply ICP transforms to fit the points to the surface
+            Args:
+                coord: raw coordinates to apply ICP
+            """
+            sourcePoints = np.array(coord[:3])
+            sourcePoints_vtk = vtkPoints()
+            sourcePoints_vtk.InsertNextPoint(sourcePoints)
+            source = vtkPolyData()
+            source.SetPoints(sourcePoints_vtk)
+
+            icp = vtkIterativeClosestPointTransform()
+            icp.SetSource(source)
+            icp.SetTarget(surface)
+
+            icp.GetLandmarkTransform().SetModeToRigidBody()
+            # icp.GetLandmarkTransform().SetModeToAffine()
+            # icp.DebugOn()
+            icp.SetMaximumNumberOfIterations(10)
+            icp.Modified()
+            icp.Update()
+
+            icpTransformFilter = vtkTransformPolyDataFilter()
+            icpTransformFilter.SetInputData(source)
+            icpTransformFilter.SetTransform(icp)
+            icpTransformFilter.Update()
+
+            transformedSource = icpTransformFilter.GetOutput()
+            p = [0, 0, 0]
+            transformedSource.GetPoint(0, p)
+
+            return p[0], p[1], p[2]
         """
         During navigation, use updated coil pose to perform the following tasks:
 
@@ -288,6 +333,14 @@ class CoilVisualizer:
         self.coil_actor.SetUserMatrix(m_img_vtk)
         self.coil_center_actor.SetUserMatrix(m_img_vtk)
         self.vector_field_assembly.SetUserMatrix(m_img_vtk)
-        self.x_axis_actor.SetUserMatrix(m_img_vtk)
-        self.y_axis_actor.SetUserMatrix(m_img_vtk)
-        self.z_axis_actor.SetUserMatrix(m_img_vtk)
+
+        t_translation = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, -30], [0, 0, 0, 1]]
+
+        m_point_t = m_img_flip @ t_translation
+
+        coord_icp = list(ICP(m_point_t[:3,-1], self.brain_surface))
+        m_point_t[:3, -1] = coord_icp
+        proj = vtku.numpy_to_vtkMatrix4x4(m_point_t)
+        self.x_axis_actor.SetUserMatrix(proj)
+        self.y_axis_actor.SetUserMatrix(proj)
+        self.z_axis_actor.SetUserMatrix(proj)
