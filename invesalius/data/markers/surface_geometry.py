@@ -15,7 +15,10 @@ class SurfaceGeometry(metaclass=Singleton):
 
     def LoadActor(self, actor):
         normals = self.GetSurfaceNormals(actor)
-        highest_z = self.CalculateHighestZ(actor)
+        try:
+            highest_z = self.CalculateHighestZ(actor)
+        except AttributeError:
+            highest_z = 0
 
         # Get the polydata from the actor.
         polydata = actor.GetMapper().GetInput()
