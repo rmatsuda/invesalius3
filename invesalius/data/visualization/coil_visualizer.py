@@ -1,5 +1,5 @@
 import vtk
-
+import time
 import invesalius.data.coordinates as dco
 import invesalius.constants as const
 import invesalius.data.vtk_utils as vtku
@@ -305,7 +305,7 @@ class CoilVisualizer:
             icp.GetLandmarkTransform().SetModeToRigidBody()
             # icp.GetLandmarkTransform().SetModeToAffine()
             # icp.DebugOn()
-            icp.SetMaximumNumberOfIterations(10)
+            icp.SetMaximumNumberOfIterations(1)
             icp.Modified()
             icp.Update()
 
@@ -331,16 +331,12 @@ class CoilVisualizer:
 
         # Update actor positions for coil, coil center, and coil orientation axes.
         self.coil_actor.SetUserMatrix(m_img_vtk)
-        self.coil_center_actor.SetUserMatrix(m_img_vtk)
         self.vector_field_assembly.SetUserMatrix(m_img_vtk)
 
-        t_translation = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, -30], [0, 0, 0, 1]]
+        t_translation = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, -10], [0, 0, 0, 1]]
 
         m_point_t = m_img_flip @ t_translation
-
         coord_icp = list(ICP(m_point_t[:3,-1], self.brain_surface))
         m_point_t[:3, -1] = coord_icp
         proj = vtku.numpy_to_vtkMatrix4x4(m_point_t)
-        self.x_axis_actor.SetUserMatrix(proj)
-        self.y_axis_actor.SetUserMatrix(proj)
-        self.z_axis_actor.SetUserMatrix(proj)
+        self.coil_center_actor.SetUserMatrix(proj)

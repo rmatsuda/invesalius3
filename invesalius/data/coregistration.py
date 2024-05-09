@@ -311,8 +311,8 @@ class CoordinateCorregistrate(threading.Thread):
                 if not self.icp_queue.empty():
                     self.use_icp, self.m_icp = self.icp_queue.get_nowait()
 
-                if not self.object_at_target_queue.empty():
-                    self.target_flag = self.object_at_target_queue.get_nowait()
+                # if not self.object_at_target_queue.empty():
+                #     self.target_flag = self.object_at_target_queue.get_nowait()
 
                 # print(f"Set the coordinate")
                 coord_raw, markers_flag = self.tracker.TrackerCoordinates.GetCoordinates()
