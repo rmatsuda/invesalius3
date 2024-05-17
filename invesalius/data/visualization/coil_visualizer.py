@@ -158,7 +158,7 @@ class CoilVisualizer:
             self.AddCoilActor(self.coil_path)
             inv_proj = Project()
             try:
-                self.brain_surface = inv_proj.surface_dict[0].polydata
+                self.brain_surface = inv_proj.surface_dict[3].polydata
             except:
                 None
 
@@ -270,7 +270,7 @@ class CoilVisualizer:
 
         # Create actors for the x, y, and z-axes.
         self.x_axis_actor = self.actor_factory.CreateLine([0., 0., 0.], [1., 0., 0.], colour=[.0, .0, 1.0])
-        self.y_axis_actor = self.actor_factory.CreateLine([0., 0., 0.], [0., 1., 0.], colour=[.0, 1.0, .0])
+        self.y_axis_actor = self.actor_factory.CreateLine([0., 0., 0.], [0., 10., 0.], colour=[.0, 1.0, .0])
         self.z_axis_actor = self.actor_factory.CreateLine([0., 0., 0.], [0., 0., 1.], colour=[1.0, .0, .0])
 
         self.renderer.AddActor(self.coil_actor)
